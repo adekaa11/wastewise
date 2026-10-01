@@ -1,0 +1,9 @@
+# секреты — никогда не выкладывать
+.env
+.streamlit/secrets.toml
+# база и собранные фото пользователей
+data/
+__pycache__/
+*.pyc
+venv/
+.venv/
