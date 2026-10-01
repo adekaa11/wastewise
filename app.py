@@ -18,7 +18,7 @@ from PIL import Image, ImageOps
 from core import db
 from core.content import (LOW_CONFIDENCE, POINTS_PER_CORRECT_ANSWER, POINTS_PER_FEEDBACK,
                           POINTS_PER_SCAN, WASTE_INFO)
-from core.model import classify, load_model
+from core.model import DETECTOR_PATH, check_scene, classify, load_model
 from core.quiz import ai_available, generate_questions, random_questions
 
 ROOT = Path(__file__).resolve().parent
@@ -40,6 +40,11 @@ st.set_page_config(page_title="WasteWise — сортировка отходов
 @st.cache_resource  # модель и база загружаются один раз, а не при каждом клике
 def get_model():
     return load_model()
+
+
+@st.cache_resource
+def get_detector():
+    return load_model(DETECTOR_PATH)
 
 
 @st.cache_resource
@@ -132,6 +137,20 @@ elif page == "Распознать отходы":
         raw = file.getvalue()
         image = ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB")
         file_key = hashlib.md5(raw).hexdigest()
+
+        with st.spinner("Нейросеть анализирует фото…"):
+            problem = check_scene(get_detector(), image)
+        if problem and st.session_state.get("force_key") != file_key:
+            c_img, c_msg = st.columns([1, 1.3])
+            c_img.image(image, use_container_width=True)
+            with c_msg:
+                st.warning(f"🤔 {problem}")
+                st.caption("Модель обучена только на отходах. На других фото она всё равно выберет "
+                           "один из 4 типов, поэтому сначала мы проверяем, что в кадре.")
+                if st.button("Это точно отход — распознать"):
+                    st.session_state.force_key = file_key
+                    st.rerun()
+            st.stop()
 
         with st.spinner("Нейросеть анализирует фото…"):
             ranked = classify(get_model(), image)
