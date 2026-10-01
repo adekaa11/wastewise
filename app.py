@@ -20,6 +20,7 @@ from core.content import (LOW_CONFIDENCE, POINTS_PER_CORRECT_ANSWER, POINTS_PER_
                           POINTS_PER_SCAN, WASTE_INFO)
 from core.model import DETECTOR_PATH, check_scene, classify, load_model
 from core.quiz import ai_available, generate_questions, random_questions
+from core import ui
 
 ROOT = Path(__file__).resolve().parent
 ASSETS = ROOT / "assets"
@@ -35,6 +36,7 @@ except Exception:
     pass
 
 st.set_page_config(page_title="WasteWise — сортировка отходов", page_icon="♻️", layout="wide")
+ui.inject()
 
 
 @st.cache_resource  # модель и база загружаются один раз, а не при каждом клике
@@ -81,12 +83,9 @@ _IG_ICON = ('<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke=
 
 def social_links(align="flex-start"):
     """Иконки Telegram и Instagram как HTML-ссылки."""
-    link = ("display:inline-flex;align-items:center;gap:7px;text-decoration:none;"
-            "color:#2E7D32;font-weight:600;font-size:0.9rem;border:1px solid #2E7D32;"
-            "border-radius:999px;padding:5px 14px")
-    return (f'<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:{align}">'
-            f'<a href="{TELEGRAM}" target="_blank" style="{link}">{_TG_ICON}Telegram</a>'
-            f'<a href="{INSTAGRAM}" target="_blank" style="{link}">{_IG_ICON}Instagram</a>'
+    return (f'<div class="ww-foot" style="justify-content:{align}">'
+            f'<a href="{TELEGRAM}" target="_blank">{_TG_ICON}Telegram</a>'
+            f'<a href="{INSTAGRAM}" target="_blank">{_IG_ICON}Instagram</a>'
             f'</div>')
 
 
@@ -98,7 +97,8 @@ user = db.get_user(conn, st.session_state.user_id) if st.session_state.user_id e
 
 # ---------- Боковое меню ----------
 with st.sidebar:
-    st.markdown(f'<img src="data:image/jpeg;base64,{b64(ASSETS / "Logo_waste_seg.jpg")}" width="180">',
+    st.markdown(f'<div class="ww-logo"><img src="data:image/jpeg;base64,'
+                f'{b64(ASSETS / "Logo_waste_seg.jpg")}" alt="WasteWise"></div>',
                 unsafe_allow_html=True)
     st.markdown("### ♻️ WasteWise")
     if user:
@@ -118,32 +118,34 @@ with st.sidebar:
 # ГЛАВНАЯ
 # =====================================================================
 if page == "Главная":
-    st.markdown(
-        f"""<div style="background-image:linear-gradient(rgba(0,0,0,.35),rgba(0,0,0,.35)),
-        url('data:image/jpeg;base64,{b64(ASSETS / "123.jpg")}');background-size:cover;background-position:center;
-        border-radius:14px;padding:70px 30px;text-align:center;color:white;margin-bottom:24px">
-        <h1 style="color:white;margin:0;font-size:clamp(1.6rem,5vw,2.8rem)">Сфотографируй мусор — узнай, куда его выбросить</h1>
-        <p style="font-size:1.15rem;margin-top:12px">Нейросеть определяет тип отхода, а приложение учит правильной сортировке</p>
-        </div>""",
-        unsafe_allow_html=True,
+    ui.hero(
+        b64(ASSETS / "123.jpg"),
+        "Сортировка отходов с помощью ИИ",
+        "Сфотографируй мусор — узнай, куда его выбросить",
+        "Нейросеть определяет тип отхода, а приложение подсказывает, куда его нести, "
+        "как подготовить и что туда не принимают.",
     )
-    c1, c2, c3 = st.columns(3)
-    c1.markdown("#### 📸 1. Сфотографируй\nЗагрузи фото или сними с камеры телефона.")
-    c2.markdown("#### 🧠 2. ИИ распознает\nМодель определит: стекло, металл, бумага или пластик.")
-    c3.markdown("#### ♻️ 3. Сортируй правильно\nСоветы, куда выбросить, и что НЕ принимают.")
 
+    ui.cards([
+        ("01", "Сфотографируй", "Загрузи готовое фото или сними предмет камерой телефона прямо в браузере."),
+        ("02", "ИИ распознаёт", "Модель определит тип: стекло, металл, бумага или пластик — и покажет уверенность."),
+        ("03", "Сортируй правильно", "Куда нести, как подготовить и что туда точно не примут."),
+    ])
+
+    st.markdown("## WasteWise в цифрах")
     stats = db.global_stats(conn)
     m1, m2, m3 = st.columns(3)
     m1.metric("Распознано фото", stats["scans"])
     m2.metric("Участников", stats["users"])
     m3.metric("Исправлений от пользователей", stats["corrected"])
 
-    st.subheader("Почему это важно")
-    st.write(
-        "По данным Всемирного банка, объём твёрдых бытовых отходов в мире к 2050 году может вырасти на 70% "
-        "по сравнению с 2016 годом. Главный барьер переработки — неправильная сортировка: "
+    st.markdown("## Почему это важно")
+    ui.quote(
+        "По данным Всемирного банка, объём твёрдых бытовых отходов в мире к 2050 году может вырасти "
+        "на 70% по сравнению с 2016 годом. Главный барьер переработки — неправильная сортировка: "
         "одна грязная или «чужая» вещь может испортить целую партию вторсырья."
     )
+
     st.divider()
     st.markdown(f"**Автор проекта: {AUTHOR}, г. Астана.**")
     st.markdown(social_links(), unsafe_allow_html=True)
@@ -205,7 +207,8 @@ elif page == "Распознать отходы":
                     "органика, батарейка — модель такие типы ещё не знает."
                 )
             st.markdown(
-                f"<h2 style='color:{info.get('color', '#2E7D32')};margin-bottom:0'>"
+                "<span class='ww-chip'>Определено нейросетью</span>"
+                f"<h2 style='color:{info.get('color', '#2E7D32')};margin:10px 0 0'>"
                 f"{info.get('emoji', '')} {rus(best_cls)}</h2>",
                 unsafe_allow_html=True,
             )
