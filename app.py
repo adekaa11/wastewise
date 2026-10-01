@@ -65,6 +65,31 @@ def rus(cls):
     return WASTE_INFO.get(cls, {}).get("name", cls)
 
 
+AUTHOR = "Адильжан Кадыргажы"
+TELEGRAM = "https://t.me/crybaby_c"
+INSTAGRAM = "https://www.instagram.com/_kadyrgazhy_a"
+
+_TG_ICON = ('<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">'
+            '<path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12'
+            'c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81'
+            'c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg>')
+_IG_ICON = ('<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="2"><rect x="2.5" y="2.5" width="19" height="19" rx="5"/>'
+            '<circle cx="12" cy="12" r="4"/>'
+            '<circle cx="17.3" cy="6.7" r="1.1" fill="currentColor" stroke="none"/></svg>')
+
+
+def social_links(align="flex-start"):
+    """Иконки Telegram и Instagram как HTML-ссылки."""
+    link = ("display:inline-flex;align-items:center;gap:7px;text-decoration:none;"
+            "color:#2E7D32;font-weight:600;font-size:0.9rem;border:1px solid #2E7D32;"
+            "border-radius:999px;padding:5px 14px")
+    return (f'<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:{align}">'
+            f'<a href="{TELEGRAM}" target="_blank" style="{link}">{_TG_ICON}Telegram</a>'
+            f'<a href="{INSTAGRAM}" target="_blank" style="{link}">{_IG_ICON}Instagram</a>'
+            f'</div>')
+
+
 # ---------- Состояние сессии ----------
 for k, v in {"user_id": None, "quiz": None, "quiz_answers": {}, "quiz_done": False, "last_scan": None}.items():
     st.session_state.setdefault(k, v)
@@ -85,6 +110,9 @@ with st.sidebar:
     if user and st.button("Выйти"):
         st.session_state.user_id = None
         st.rerun()
+    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+    st.caption(AUTHOR)
+    st.markdown(social_links(), unsafe_allow_html=True)
 
 # =====================================================================
 # ГЛАВНАЯ
@@ -116,7 +144,9 @@ if page == "Главная":
         "по сравнению с 2016 годом. Главный барьер переработки — неправильная сортировка: "
         "одна грязная или «чужая» вещь может испортить целую партию вторсырья."
     )
-    st.caption("Автор проекта: Кадыргажы Айзере, школа-гимназия № 5, г. Астана.")
+    st.divider()
+    st.markdown(f"**Автор проекта: {AUTHOR}, г. Астана.**")
+    st.markdown(social_links(), unsafe_allow_html=True)
 
 # =====================================================================
 # РАСПОЗНАВАНИЕ
