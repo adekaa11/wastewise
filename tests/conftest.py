@@ -72,6 +72,16 @@ def backdate(conn, table, row_id, hours):
     conn.commit()
 
 
+@pytest.fixture
+def fake_storage():
+    """Поддельный Supabase Storage (tests/fake_supabase.py) с приватным бакетом feedback."""
+    from fake_supabase import FakeStorage
+
+    fake = FakeStorage()
+    yield fake
+    fake.close()
+
+
 class _List(list):
     def tolist(self):
         return list(self)
@@ -126,6 +136,7 @@ class App:
             self.at.secrets["DATABASE_URL"] = database_url
         for key, value in (secrets or {}).items():
             self.at.secrets[key] = value
+        self.feedback_dir = Path(path).parent / "data" / "feedback"
         self.db_path, self.database_url = db_path, database_url
         self.classifier, self.detector = classifier, detector
         self._uploads = uploads
@@ -186,7 +197,8 @@ class App:
 
 def start_app(tmp_path, monkeypatch, database_url=None, secrets=None):
     """Запустить приложение в отдельной папке: своя data/feedback, модели — поддельные."""
-    monkeypatch.delenv("DATABASE_URL", raising=False)  # чтобы тесты не попали в настоящую базу
+    for key in ("DATABASE_URL", "SUPABASE_URL", "SUPABASE_SERVICE_KEY"):
+        monkeypatch.delenv(key, raising=False)  # чтобы тесты не попали в настоящую базу и хранилище
     shutil.copy(ROOT / "app.py", tmp_path / "app.py")
     (tmp_path / "assets").mkdir()
     for name in ("Logo_waste_seg.jpg", "123.jpg"):

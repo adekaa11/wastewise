@@ -118,6 +118,9 @@ def init_db(conn):
     if "image_hash" not in columns:
         conn.execute("ALTER TABLE scans ADD COLUMN image_hash TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_scans_user_hash ON scans(user_id, image_hash)")
+    # Где лежит фото «Модель ошиблась» (папка data/feedback или Supabase Storage) — наш датасет.
+    if "feedback_path" not in [row[1] for row in conn.execute("PRAGMA table_info(scans)")]:
+        conn.execute("ALTER TABLE scans ADD COLUMN feedback_path TEXT")
     # Сколько баллов дала викторина — нужно для лимита «баллы за 3 викторины в сутки».
     if "points" not in [row[1] for row in conn.execute("PRAGMA table_info(quiz_results)")]:
         conn.execute("ALTER TABLE quiz_results ADD COLUMN points INTEGER DEFAULT 0")
@@ -238,8 +241,9 @@ def find_scan(conn, user_id, image_hash):
 
 
 @_locked
-def correct_scan(conn, scan_id, corrected):
-    conn.execute("UPDATE scans SET corrected = ? WHERE id = ?", (corrected, scan_id))
+def correct_scan(conn, scan_id, corrected, feedback_path=None):
+    """Пользователь указал правильный тип; feedback_path — где сохранено фото для дообучения."""
+    conn.execute("UPDATE scans SET corrected = ?, feedback_path = ? WHERE id = ?", (corrected, feedback_path, scan_id))
     conn.commit()
 
 
