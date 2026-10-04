@@ -5,6 +5,7 @@
 Запуск:  pip install -r requirements.txt pytest  →  pytest
 """
 import io
+import os
 import shutil
 import sqlite3
 import sys
@@ -22,11 +23,29 @@ sys.path.insert(0, str(ROOT))
 from core import db, model  # noqa: E402
 
 
-@pytest.fixture
-def store(tmp_path, monkeypatch):
-    """Пустая база с таблицами — та же, с которой работает приложение."""
-    monkeypatch.setattr(db, "DB_PATH", tmp_path / "app.db")
-    conn = db.get_conn()
+# Тесты хранилища идут на SQLite всегда, а на Postgres — если задан TEST_DATABASE_URL
+# (в CI это контейнер postgres, см. .github/workflows/tests.yml). База в TEST_DATABASE_URL
+# очищается перед каждым тестом — не указывайте там базу сайта!
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
+BACKENDS = ["sqlite"] + (["postgres"] if TEST_DATABASE_URL else [])
+needs_postgres = pytest.mark.skipif(not TEST_DATABASE_URL, reason="нужен TEST_DATABASE_URL с тестовым Postgres")
+
+
+def fresh_postgres():
+    """Соединение с пустой тестовой базой Postgres: все таблицы WasteWise удалены, миграции применятся заново."""
+    conn = db.get_conn(TEST_DATABASE_URL)
+    conn.execute("DROP TABLE IF EXISTS quiz_results, scans, users, schema_migrations CASCADE")
+    return conn
+
+
+@pytest.fixture(params=BACKENDS)
+def store(request, tmp_path, monkeypatch):
+    """Пустая база с таблицами — та же, с которой работает приложение (SQLite или Postgres)."""
+    if request.param == "postgres":
+        conn = fresh_postgres()
+    else:
+        monkeypatch.setattr(db, "DB_PATH", tmp_path / "app.db")
+        conn = db.get_conn()
     db.init_db(conn)
     yield conn
     conn.close()
@@ -34,7 +53,11 @@ def store(tmp_path, monkeypatch):
 
 def backdate(conn, table, row_id, hours):
     """Сдвинуть дату записи в прошлое (для проверки окна «24 часа»)."""
-    conn.execute(f"UPDATE {table} SET date = datetime('now', '-{int(hours)} hours') WHERE id = ?", (row_id,))
+    if getattr(conn, "dialect", "sqlite") == "postgres":
+        past = f"timezone('utc', now()) - interval '{int(hours)} hours'"
+    else:
+        past = f"datetime('now', '-{int(hours)} hours')"
+    conn.execute(f"UPDATE {table} SET date = {past} WHERE id = ?", (row_id,))
     conn.commit()
 
 

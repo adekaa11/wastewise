@@ -1,4 +1,10 @@
-"""Работа с базой данных SQLite: пользователи, баллы, история распознаваний и викторин."""
+"""База данных: пользователи, баллы, история распознаваний и викторин.
+
+Где хранится:
+- на сайте — Supabase (Postgres), если задан DATABASE_URL (st.secrets) — данные не пропадают при перезапуске;
+- локально и в тестах — файл SQLite data/app.db, как раньше.
+Функции ниже одинаково работают с обоими вариантами (см. core/pg.py).
+"""
 import functools
 import hashlib
 import hmac
@@ -53,7 +59,11 @@ def _locked(func):
     return wrapper
 
 
-def get_conn():
+def get_conn(url=None):
+    """Соединение с базой: url (DATABASE_URL) → Postgres/Supabase, без него — локальный SQLite."""
+    if url:
+        from .pg import PostgresConnection
+        return PostgresConnection(url)
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.execute("PRAGMA foreign_keys = ON")
@@ -62,6 +72,9 @@ def get_conn():
 
 @_locked
 def init_db(conn):
+    if _dialect(conn) == "postgres":
+        conn.apply_migrations()  # таблицы Supabase — SQL-миграции из supabase/migrations/
+        return
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
