@@ -2,6 +2,7 @@
 
 - torch и torchvision — CPU-сборки (версия с меткой +cpu), а не CUDA с PyPI;
 - никаких nvidia-* и triton (это ~2–3 ГБ CUDA-библиотек, на сервере без видеокарты не нужны);
+  исключение — nvidia-ml-py: крошечная Python-обёртка NVML (~50 КБ), её требует ultralytics;
 - OpenCV < 5 (в OpenCV 5 нет cv2.CascadeClassifier, см. core/model.py).
 
 Принимает отчёт pip (JSON) или вывод uv:
@@ -12,6 +13,9 @@
 import json
 import re
 import sys
+
+NOT_CUDA = {"nvidia-ml-py"}  # не CUDA-библиотека, а Python-обёртка для опроса видеокарт (нужна ultralytics)
+WATCH = ("requests", "urllib3", "certifi")  # uv берёт их из индекса PyTorch, где лежат старые версии
 
 
 def resolved(path):
@@ -30,7 +34,7 @@ def problems(pkgs):
         version = pkgs.get(name)
         if not version or not version.endswith("+cpu"):
             found.append(f"{name}=={version}: ожидалась CPU-сборка (+cpu)")
-    cuda = sorted(n for n in pkgs if n.startswith("nvidia-") or n == "triton")
+    cuda = sorted(n for n in pkgs if (n.startswith("nvidia-") and n not in NOT_CUDA) or n == "triton")
     if cuda:
         found.append("тянутся CUDA-библиотеки: " + ", ".join(cuda))
     opencv = pkgs.get("opencv-python")
@@ -41,12 +45,19 @@ def problems(pkgs):
 
 if __name__ == "__main__":
     failed = False
+    results = {}
     for path in sys.argv[1:]:
-        pkgs = resolved(path)
+        pkgs = results[path] = resolved(path)
         errors = problems(pkgs) if pkgs else ["пакеты не найдены — разрешение зависимостей не удалось?"]
         print(f"{path}: torch=={pkgs.get('torch')}, torchvision=={pkgs.get('torchvision')}, "
               f"opencv-python=={pkgs.get('opencv-python')}, всего пакетов: {len(pkgs)}")
         for e in errors:
             print(f"  ❌ {e}")
         failed |= bool(errors)
+    # не ошибка, а подсказка: где pip и uv выбрали разные версии важных сетевых пакетов
+    if len(results) == 2:
+        (a, pa), (b, pb) = results.items()
+        for name in WATCH:
+            if pa.get(name) != pb.get(name):
+                print(f"  ⚠️ {name}: {a} → {pa.get(name)}, {b} → {pb.get(name)}")
     sys.exit(1 if failed else 0)
