@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 from core import db
 from core.content import (LOW_CONFIDENCE, POINTS_PER_CORRECT_ANSWER, POINTS_PER_FEEDBACK,
-                          POINTS_PER_SCAN, QUIZ_REWARDS_PER_DAY, WASTE_INFO)
+                          POINTS_PER_SCAN, QUIZ_REWARDS_PER_DAY, WASTE_INFO, canonical)
 from core.model import DETECTOR_PATH, check_scene, classify, load_image, load_model
 from core.pg import connection_hint
 from core.quiz import ai_available, generate_questions, random_questions
@@ -155,7 +155,20 @@ def b64(path):
 
 
 def rus(cls):
-    return WASTE_INFO.get(cls, {}).get("name", cls)
+    return WASTE_INFO.get(canonical(cls), {}).get("name", cls)
+
+
+def model_classes():
+    """Какие типы знает загруженная модель: старая — 4, новая — 7 (порядок — как в WASTE_INFO)."""
+    known = {canonical(name) for name in get_model().names.values()}
+    return [c for c in WASTE_INFO if c in known] + sorted(known - set(WASTE_INFO))
+
+
+def plural(n, one, few, many):
+    """1 тип, 2 типа, 5 типов."""
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    return few if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else many
 
 
 AUTHOR = "Адильжан Кадыргажы"
@@ -228,7 +241,7 @@ if page == "Главная":
 
     ui.cards([
         ("01", "Сфотографируй", "Загрузи готовое фото или сними предмет камерой телефона прямо в браузере."),
-        ("02", "ИИ распознаёт", "Модель определит тип: стекло, металл, бумага или пластик — и покажет уверенность."),
+        ("02", "ИИ распознаёт", "Модель определит тип отхода и покажет, насколько она уверена."),
         ("03", "Сортируй правильно", "Куда нести, как подготовить и что туда точно не примут."),
     ])
 
@@ -255,8 +268,10 @@ if page == "Главная":
 # =====================================================================
 elif page == "Распознать отходы":
     st.title("📸 Распознать отходы")
-    st.caption("Модель пока знает 4 типа: стекло, металл, бумага, пластик. "
-               "Лучше всего работает, если на фото один предмет на однотонном фоне.")
+    known = model_classes()  # тексты подстраиваются под модель: старая знает 4 типа, новая — 7
+    st.caption(f"Модель знает {len(known)} {plural(len(known), 'тип', 'типа', 'типов')}: "
+               f"{', '.join(rus(c).lower() for c in known)}. "
+               "Лучше всего работает, если на фото один предмет крупным планом.")
 
     tab_upload, tab_camera = st.tabs(["Загрузить фото", "Снять камерой"])
     with tab_upload:
@@ -293,7 +308,7 @@ elif page == "Распознать отходы":
         with st.spinner("Нейросеть анализирует фото…"):
             ranked = cached_classify(file_key, image)
         best_cls, best_p = ranked[0]
-        info = WASTE_INFO.get(best_cls, {})
+        info = WASTE_INFO.get(canonical(best_cls), {})
 
         # Одно и то же фото не даёт баллы повторно.
         # Раньше помнилось только ПОСЛЕДНЕЕ фото сессии: чередуя два снимка (А→Б→А→Б…),
@@ -323,10 +338,11 @@ elif page == "Распознать отходы":
             if scan["repeat"] and user:
                 st.caption("Это фото вы уже проверяли — баллы за него были начислены раньше.")
             if best_p < LOW_CONFIDENCE:
+                unknown = [rus(c).lower() for c in WASTE_INFO if c not in known]
                 st.warning(
                     f"Модель не уверена ({best_p:.0%}). Возможно, это **{rus(best_cls)}** или "
-                    f"**{rus(ranked[1][0])}**. Если предмет из смешанного материала или это картон, "
-                    "органика, батарейка — модель такие типы ещё не знает."
+                    f"**{rus(ranked[1][0])}**. Если предмет из смешанного материала, ответ может быть неточным."
+                    + (f" А если это {', '.join(unknown)} — такие типы модель ещё не знает." if unknown else "")
                 )
             st.markdown(
                 "<span class='ww-chip'>Определено нейросетью</span>"
@@ -348,8 +364,8 @@ elif page == "Распознать отходы":
         st.divider()
         st.markdown("**Модель ошиблась?** Укажите правильный ответ — фото попадёт в набор для дообучения.")
         fc1, fc2 = st.columns([2, 1])
-        options = [c for c in WASTE_INFO] + ["cardboard", "organic", "other"]
-        labels = {**{c: rus(c) for c in WASTE_INFO}, "cardboard": "Картон", "organic": "Органика", "other": "Другое"}
+        options = list(WASTE_INFO)  # все 7 типов, даже если модель пока знает меньше: так и собираем датасет
+        labels = {c: rus(c) for c in options}
         correct = fc1.selectbox("Правильный тип", options, format_func=lambda c: labels[c])
         if fc2.button("Отправить исправление", disabled=scan["fixed"]):
             try:  # фото + метка пользователя → наш датасет (Supabase Storage или data/feedback)
@@ -468,7 +484,10 @@ elif page == "Рейтинг":
     stats = db.global_stats(conn)
     if stats["by_class"]:
         st.subheader("Что чаще всего распознают")
-        df = pd.DataFrame([(rus(c), n) for c, n in stats["by_class"]], columns=["Тип", "Количество"])
+        merged = {}  # старые метки («cardboard») складываются с новыми («paper»)
+        for c, n in stats["by_class"]:
+            merged[rus(c)] = merged.get(rus(c), 0) + n
+        df = pd.DataFrame(list(merged.items()), columns=["Тип", "Количество"])
         st.altair_chart(alt.Chart(df).mark_arc(innerRadius=50).encode(
             theta="Количество:Q", color="Тип:N"), width="stretch")
 

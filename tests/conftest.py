@@ -87,16 +87,22 @@ class _List(list):
         return list(self)
 
 
-class FakeClassifier:
-    """Вместо YOLO-классификатора: всегда «пластик, 90%»."""
+OLD_CLASSES = {0: "plastic", 1: "glass", 2: "metal", 3: "paper"}
+NEW_CLASSES = dict(enumerate(["ewaste", "glass", "metal", "organic", "other", "paper", "plastic"]))  # порядок ultralytics
 
-    def __init__(self):
+
+class FakeClassifier:
+    """Вместо YOLO-классификатора. По умолчанию — как старая модель: 4 класса, всегда «пластик, 90%»."""
+
+    def __init__(self, names=None, probs=None):
         self.calls = 0
+        self.names = dict(names or OLD_CLASSES)
+        self.probs = list(probs or [0.90, 0.05, 0.03, 0.02])
 
     def predict(self, image, **kwargs):
         self.calls += 1
-        probs = SimpleNamespace(data=_List([0.90, 0.05, 0.03, 0.02]))
-        return [SimpleNamespace(probs=probs, names={0: "plastic", 1: "glass", 2: "metal", 3: "paper"})]
+        probs = SimpleNamespace(data=_List(self.probs))
+        return [SimpleNamespace(probs=probs, names=self.names)]
 
 
 class FakeDetector:
