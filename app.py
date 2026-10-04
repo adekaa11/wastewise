@@ -16,7 +16,8 @@ from dotenv import load_dotenv
 
 from core import db
 from core.content import (LOW_CONFIDENCE, POINTS_PER_CORRECT_ANSWER, POINTS_PER_FEEDBACK,
-                          POINTS_PER_SCAN, QUIZ_REWARDS_PER_DAY, WASTE_INFO, canonical)
+                          POINTS_PER_SCAN, QUIZ_REWARDS_PER_DAY, WASTE_INFO, HAZARD_MAYBE, HAZARD_SURE,
+                          canonical, hazard_hint)
 from core.model import DETECTOR_PATH, check_scene, classify, load_image, load_model
 from core.pg import connection_hint
 from core.quiz import ai_available, generate_questions, random_questions
@@ -351,6 +352,11 @@ elif page == "Распознать отходы":
                 unsafe_allow_html=True,
             )
             st.progress(best_p, text=f"Уверенность: {best_p:.0%}")
+            hazard = hazard_hint(ranked)  # батарейки и электроника — только в спецпункты
+            if hazard == "sure":
+                st.warning(HAZARD_SURE)
+            elif hazard == "maybe":
+                st.info(HAZARD_MAYBE)
             if best_p < LOW_CONFIDENCE:
                 st.caption(f"Советы ниже — для варианта «{rus(best_cls)}».")
             st.markdown(f"**Куда:** {info.get('where', '')}")
