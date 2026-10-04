@@ -1,0 +1,32 @@
+# Бесплатный проект Supabase ставится на паузу после недели без запросов — тогда сайт не может
+# открыть базу, пока проект не включат вручную. Раз в 2 дня этот workflow делает простой запрос
+# к таблице users (SELECT 1 … LIMIT 1), и база остаётся активной.
+#
+# Строка подключения — секрет репозитория SUPABASE_DATABASE_URL (та же строка Session pooler,
+# что в Streamlit Cloud). Как добавить: docs/SUPABASE.md, шаг «Keep-alive».
+# Важно: GitHub запускает расписание только из основной ветки (main) — после слияния PR.
+name: supabase-keepalive
+
+on:
+  schedule:
+    - cron: "17 3 */2 * *"  # каждые 2 дня в 03:17 UTC (08:17 по Астане)
+  workflow_dispatch:         # запустить вручную: Actions → supabase-keepalive → Run workflow
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    name: Запрос к Supabase
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: pip install "psycopg[binary]>=3.2"
+      - name: SELECT 1 FROM users LIMIT 1
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+        run: python .github/supabase_keepalive.py
