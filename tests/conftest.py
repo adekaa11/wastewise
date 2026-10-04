@@ -120,9 +120,11 @@ class _Upload:
 class App:
     """Обёртка над AppTest: страница, загрузка фото, вход, баллы из базы."""
 
-    def __init__(self, path, db_path, classifier, detector, uploads):
+    def __init__(self, path, db_path, classifier, detector, uploads, database_url=None):
         self.at = AppTest.from_file(str(path), default_timeout=60)
-        self.db_path = db_path
+        if database_url:  # как на Streamlit Cloud: строка подключения — в Secrets
+            self.at.secrets["DATABASE_URL"] = database_url
+        self.db_path, self.database_url = db_path, database_url
         self.classifier, self.detector = classifier, detector
         self._uploads = uploads
         self.run()
@@ -162,21 +164,27 @@ class App:
         next(b for b in self.at.sidebar.button if b.label == "Выйти").click()
         self.run()
 
+    def query(self, sql, params=()):
+        """Прочитать из базы приложения напрямую (SQLite-файл или тестовый Postgres)."""
+        conn = db.get_conn(self.database_url) if self.database_url else sqlite3.connect(self.db_path)
+        try:
+            return conn.execute(sql, params).fetchall()
+        finally:
+            conn.close()
+
     def points(self, username="alice"):
-        with sqlite3.connect(self.db_path) as c:
-            return c.execute("SELECT points FROM users WHERE username = ?", (username,)).fetchone()[0]
+        return self.query("SELECT points FROM users WHERE username = ?", (username,))[0][0]
 
     def scans(self):
-        with sqlite3.connect(self.db_path) as c:
-            return c.execute("SELECT user_id, predicted, corrected, image_hash FROM scans ORDER BY id").fetchall()
+        return self.query("SELECT user_id, predicted, corrected, image_hash FROM scans ORDER BY id")
 
     def captions(self):
         return [c.value for c in self.at.caption]
 
 
-@pytest.fixture
-def app(tmp_path, monkeypatch):
-    """Приложение в отдельной папке: своя база и своя data/feedback, модели — поддельные."""
+def start_app(tmp_path, monkeypatch, database_url=None):
+    """Запустить приложение в отдельной папке: своя data/feedback, модели — поддельные."""
+    monkeypatch.delenv("DATABASE_URL", raising=False)  # чтобы тесты не попали в настоящую базу
     shutil.copy(ROOT / "app.py", tmp_path / "app.py")
     (tmp_path / "assets").mkdir()
     for name in ("Logo_waste_seg.jpg", "123.jpg"):
@@ -191,6 +199,16 @@ def app(tmp_path, monkeypatch):
     monkeypatch.setattr(st, "file_uploader", lambda *a, **k: uploads["file"])
     st.cache_data.clear()
     st.cache_resource.clear()
-    yield App(tmp_path / "app.py", db.DB_PATH, classifier, detector, uploads)
+    return App(tmp_path / "app.py", db.DB_PATH, classifier, detector, uploads, database_url)
+
+
+@pytest.fixture(params=BACKENDS)
+def app(request, tmp_path, monkeypatch):
+    """Приложение на SQLite (как локально) и, если задан TEST_DATABASE_URL, на Postgres (как на сайте)."""
+    database_url = None
+    if request.param == "postgres":
+        fresh_postgres().close()  # пустая база: таблицы создаст само приложение миграциями
+        database_url = TEST_DATABASE_URL
+    yield start_app(tmp_path, monkeypatch, database_url)
     st.cache_data.clear()
     st.cache_resource.clear()
