@@ -23,6 +23,14 @@ from core.quiz import ai_available, generate_questions, random_questions
 from core import ui
 
 ROOT = Path(__file__).resolve().parent
+
+# Свой логгер: Streamlit настраивает только собственный, и без этого строки уровня INFO в логах не видны.
+log = logging.getLogger("wastewise")
+if not log.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s wastewise: %(message)s"))
+    log.addHandler(_handler)
+    log.setLevel(logging.INFO)
 ASSETS = ROOT / "assets"
 FEEDBACK_DIR = ROOT / "data" / "feedback"
 
@@ -78,15 +86,41 @@ def cached_classify(file_key: str, _image):
 def get_db():
     # DATABASE_URL (Streamlit Cloud → Settings → Secrets) → Supabase: аккаунты и баллы переживают
     # перезапуск сайта. Без него — локальный файл data/app.db, как раньше. Инструкция: docs/SUPABASE.md
-    conn = db.get_conn(setting("DATABASE_URL"))
+    url = setting("DATABASE_URL")
+    conn = db.get_conn(url)
     db.init_db(conn)
+    # Один раз при запуске: какая база на самом деле используется. Без пароля и адреса — логи видят не только вы.
+    log.info("База данных: %s", db.describe(conn))
+    if not url and (misplaced := misplaced_database_url()):
+        log.warning("В Secrets есть строка postgresql://… под именем «%s», а сайт ищет DATABASE_URL "
+                    "на верхнем уровне (не внутри раздела [...]). Переименуйте ключ.", misplaced)
     return conn
+
+
+def misplaced_database_url():
+    """Частая ошибка: строка подключения лежит в Secrets под другим именем или внутри раздела [...].
+
+    Возвращает имя ключа (например, «connections.supabase.url») — но не саму строку с паролем.
+    """
+    try:
+        found = list(_postgres_keys(st.secrets.to_dict()))
+    except Exception:
+        return None
+    return found[0] if found else None
+
+
+def _postgres_keys(secrets, prefix=""):
+    for key, value in secrets.items():
+        if isinstance(value, dict):
+            yield from _postgres_keys(value, f"{prefix}{key}.")
+        elif isinstance(value, str) and value.strip().startswith(("postgres://", "postgresql://")):
+            yield f"{prefix}{key}"
 
 
 try:
     conn = get_db()
 except Exception:  # база недоступна: Supabase на паузе, неверный пароль, нет сети
-    logging.getLogger("wastewise").exception("Не удалось подключиться к базе данных")  # подробности — в логах
+    log.exception("Не удалось подключиться к базе данных")  # подробности — в логах
     st.error("Не удалось подключиться к базе данных. Попробуйте обновить страницу через минуту.")
     hint = connection_hint(setting("DATABASE_URL") or "")
     if hint:  # подсказка без секретов: пароль и адрес не показываются

@@ -120,10 +120,12 @@ class _Upload:
 class App:
     """Обёртка над AppTest: страница, загрузка фото, вход, баллы из базы."""
 
-    def __init__(self, path, db_path, classifier, detector, uploads, database_url=None):
+    def __init__(self, path, db_path, classifier, detector, uploads, database_url=None, secrets=None):
         self.at = AppTest.from_file(str(path), default_timeout=60)
         if database_url:  # как на Streamlit Cloud: строка подключения — в Secrets
             self.at.secrets["DATABASE_URL"] = database_url
+        for key, value in (secrets or {}).items():
+            self.at.secrets[key] = value
         self.db_path, self.database_url = db_path, database_url
         self.classifier, self.detector = classifier, detector
         self._uploads = uploads
@@ -182,7 +184,7 @@ class App:
         return [c.value for c in self.at.caption]
 
 
-def start_app(tmp_path, monkeypatch, database_url=None):
+def start_app(tmp_path, monkeypatch, database_url=None, secrets=None):
     """Запустить приложение в отдельной папке: своя data/feedback, модели — поддельные."""
     monkeypatch.delenv("DATABASE_URL", raising=False)  # чтобы тесты не попали в настоящую базу
     shutil.copy(ROOT / "app.py", tmp_path / "app.py")
@@ -199,7 +201,7 @@ def start_app(tmp_path, monkeypatch, database_url=None):
     monkeypatch.setattr(st, "file_uploader", lambda *a, **k: uploads["file"])
     st.cache_data.clear()
     st.cache_resource.clear()
-    return App(tmp_path / "app.py", db.DB_PATH, classifier, detector, uploads, database_url)
+    return App(tmp_path / "app.py", db.DB_PATH, classifier, detector, uploads, database_url, secrets)
 
 
 @pytest.fixture(params=BACKENDS)

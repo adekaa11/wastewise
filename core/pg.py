@@ -54,6 +54,11 @@ class PostgresConnection:
     def rollback(self):
         pass  # autocommit: откатывать нечего — неудачный запрос ничего не записал
 
+    def describe(self):
+        """«Supabase (Postgres 17) через Session pooler» — без пароля и адреса."""
+        version = f"Postgres {self._conn.info.server_version // 10000}" if self._conn else "Postgres"
+        return describe_url(self._url).replace("Postgres", version, 1)
+
     def is_disconnect(self, error):
         """Ошибка из-за оборванного соединения? Тогда core/db.py переподключится и повторит запрос."""
         return isinstance(error, self._psycopg.OperationalError) and (
@@ -88,6 +93,21 @@ class PostgresConnection:
                     self._conn.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (path.stem,))
                     applied.append(path.stem)
         return applied
+
+
+def describe_url(url):
+    """Куда подключаемся — для лога при старте: без пароля, адреса и id проекта."""
+    try:
+        parsed = urlparse(url)
+        host, port = parsed.hostname or "", parsed.port
+    except ValueError:
+        return "Postgres (строка подключения не разбирается)"
+    if host.endswith("pooler.supabase.com"):
+        mode = {None: "Session pooler", 5432: "Session pooler", 6543: "Transaction pooler"}.get(port, f"порт {port}")
+        return f"Supabase (Postgres) через {mode}"
+    if host.endswith(".supabase.co"):
+        return "Supabase (Postgres), прямое подключение"
+    return "Postgres"
 
 
 def _connect_options(url):

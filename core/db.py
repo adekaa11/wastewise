@@ -70,6 +70,14 @@ def get_conn(url=None):
     return conn
 
 
+def describe(conn):
+    """Какая база используется — для строки в логе при старте сайта (без пароля и адреса)."""
+    if _dialect(conn) == "postgres":
+        return conn.describe()
+    return (f"SQLite — локальный файл data/{DB_PATH.name}. На Streamlit Cloud он стирается при "
+            "перезапуске: для постоянной базы задайте DATABASE_URL (docs/SUPABASE.md)")
+
+
 @_locked
 def init_db(conn):
     if _dialect(conn) == "postgres":
