@@ -38,6 +38,17 @@ def fresh_postgres():
     return conn
 
 
+@pytest.fixture
+def pgconn():
+    """Только Postgres: пустая тестовая база с применёнными миграциями."""
+    if not TEST_DATABASE_URL:
+        pytest.skip("нужен TEST_DATABASE_URL с тестовым Postgres")
+    conn = fresh_postgres()
+    db.init_db(conn)
+    yield conn
+    conn.close()
+
+
 @pytest.fixture(params=BACKENDS)
 def store(request, tmp_path, monkeypatch):
     """Пустая база с таблицами — та же, с которой работает приложение (SQLite или Postgres)."""

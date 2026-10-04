@@ -172,14 +172,23 @@ def _insert_user(conn, username, hashed, name, school):
 def authenticate(conn, username, password):
     row = _password_row(conn, username.strip())
     # проверка пароля (PBKDF2, ~0,1 с) — уже вне замка, чтобы не тормозить остальных
-    if row and verify_password(row[1], password):
-        return row[0]
-    return None
+    if not (row and verify_password(row[1], password)):
+        return None
+    if not row[1].startswith("pbkdf2$"):
+        # старый хэш sha256 без соли (база версии 1) — при первом же входе заменяем на PBKDF2 с солью
+        _set_password_hash(conn, row[0], hash_password(password))
+    return row[0]
 
 
 @_locked
 def _password_row(conn, username):
     return conn.execute("SELECT id, password FROM users WHERE username = ?", (username,)).fetchone()
+
+
+@_locked
+def _set_password_hash(conn, user_id, hashed):
+    conn.execute("UPDATE users SET password = ? WHERE id = ?", (hashed, user_id))
+    conn.commit()
 
 
 @_locked
