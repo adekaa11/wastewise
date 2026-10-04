@@ -1,0 +1,9 @@
+# Зависимости для автотестов: всё из requirements.txt, кроме нейросетевых библиотек
+# (torch, ultralytics, opencv ~2 ГБ). В тестах модели «поддельные», поэтому они не нужны.
+# Используется в .github/workflows/tests.yml и для локального запуска:  pip install -r requirements-test.txt
+streamlit>=1.51
+python-dotenv
+pandas
+altair
+pillow
+pytest

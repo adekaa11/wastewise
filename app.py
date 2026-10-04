@@ -3,7 +3,6 @@
 Запуск:  streamlit run app.py
 """
 import base64
-import io
 import os
 import hashlib
 import uuid
@@ -13,12 +12,11 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
-from PIL import Image, ImageOps
 
 from core import db
 from core.content import (LOW_CONFIDENCE, POINTS_PER_CORRECT_ANSWER, POINTS_PER_FEEDBACK,
-                          POINTS_PER_SCAN, WASTE_INFO)
-from core.model import DETECTOR_PATH, check_scene, classify, load_model
+                          POINTS_PER_SCAN, QUIZ_REWARDS_PER_DAY, WASTE_INFO)
+from core.model import DETECTOR_PATH, check_scene, classify, load_image, load_model
 from core.quiz import ai_available, generate_questions, random_questions
 from core import ui
 
@@ -47,6 +45,20 @@ def get_model():
 @st.cache_resource
 def get_detector():
     return load_model(DETECTOR_PATH)
+
+
+# Streamlit перезапускает весь скрипт при КАЖДОМ клике (выбор в списке, кнопка и т.п.).
+# Без кэша обе нейросети заново обрабатывали то же самое фото. Теперь результат
+# запоминается по file_key (md5 файла). Аргумент _image с подчёркиванием Streamlit
+# не хеширует — ключом служит только file_key.
+@st.cache_data(max_entries=300, show_spinner=False)
+def cached_check_scene(file_key: str, _image):
+    return check_scene(get_detector(), _image)
+
+
+@st.cache_data(max_entries=300, show_spinner=False)
+def cached_classify(file_key: str, _image):
+    return classify(get_model(), _image)
 
 
 @st.cache_resource
@@ -90,7 +102,7 @@ def social_links(align="flex-start"):
 
 
 # ---------- Состояние сессии ----------
-for k, v in {"user_id": None, "quiz": None, "quiz_answers": {}, "quiz_done": False, "last_scan": None}.items():
+for k, v in {"user_id": None, "quiz": None, "quiz_answers": {}, "quiz_done": False, "seen_scans": {}}.items():
     st.session_state.setdefault(k, v)
 
 user = db.get_user(conn, st.session_state.user_id) if st.session_state.user_id else None
@@ -113,6 +125,15 @@ with st.sidebar:
     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
     st.caption(AUTHOR)
     st.markdown(social_links(), unsafe_allow_html=True)
+
+
+def show_points():
+    """Баллы в меню. Вызывается в самом конце скрипта (после всех начислений) и перед st.stop():
+    st.stop() обрывает скрипт, и раньше строка с баллами в меню из-за этого пропадала."""
+    if user:
+        fresh = db.get_user(conn, user["id"])
+        points_slot.success(f"👤 {fresh['name']} · ⭐ {fresh['points']} баллов")
+
 
 # =====================================================================
 # ГЛАВНАЯ
@@ -165,16 +186,21 @@ elif page == "Распознать отходы":
         shot = st.camera_input("Сделайте снимок") if st.toggle("Включить камеру") else None
     file = shot or uploaded
 
-    if file is not None:
-        raw = file.getvalue()
-        image = ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB")
+    raw = file.getvalue() if file is not None else None
+    image = load_image(raw) if raw else None
+    if raw and image is None:  # раньше битый файл ронял страницу с длинной ошибкой Python
+        st.error("Не удалось открыть файл как изображение. Попробуйте другое фото (JPG, PNG или WEBP).")
+
+    if image is None:
+        st.session_state.shown_scan = None  # фото убрали — следующее открытие уже «возврат»
+    else:
         file_key = hashlib.md5(raw).hexdigest()
 
         with st.spinner("Нейросеть анализирует фото…"):
-            problem = check_scene(get_detector(), image)
+            problem = cached_check_scene(file_key, image)
         if problem and st.session_state.get("force_key") != file_key:
             c_img, c_msg = st.columns([1, 1.3])
-            c_img.image(image, use_container_width=True)
+            c_img.image(image, width="stretch")
             with c_msg:
                 st.warning(f"🤔 {problem}")
                 st.caption("Модель обучена только на отходах. На других фото она всё равно выберет "
@@ -182,24 +208,41 @@ elif page == "Распознать отходы":
                 if st.button("Это точно отход — распознать"):
                     st.session_state.force_key = file_key
                     st.rerun()
+            show_points()
             st.stop()
 
         with st.spinner("Нейросеть анализирует фото…"):
-            ranked = classify(get_model(), image)
+            ranked = cached_classify(file_key, image)
         best_cls, best_p = ranked[0]
         info = WASTE_INFO.get(best_cls, {})
 
-        # одно и то же фото не даёт баллы повторно
-        if st.session_state.last_scan is None or st.session_state.last_scan["key"] != file_key:
-            scan_id = db.save_scan(conn, user["id"] if user else None, best_cls, best_p)
-            st.session_state.last_scan = {"key": file_key, "id": scan_id, "fixed": False}
-            if user:
-                db.add_points(conn, user["id"], POINTS_PER_SCAN)
-                st.toast(f"+{POINTS_PER_SCAN} баллов!", icon="⭐")
+        # Одно и то же фото не даёт баллы повторно.
+        # Раньше помнилось только ПОСЛЕДНЕЕ фото сессии: чередуя два снимка (А→Б→А→Б…),
+        # можно было бесконечно получать баллы за распознавание и за «исправление».
+        # Теперь: (1) в сессии помним все проверенные фото, (2) у вошедшего пользователя
+        # дополнительно смотрим в базу — так не помогает и выход/вход в аккаунт.
+        scan_key = f"{user['id'] if user else 0}:{file_key}"
+        seen = st.session_state.seen_scans
+        if scan_key not in seen:
+            prev = db.find_scan(conn, user["id"], file_key) if user else None
+            if prev:
+                seen[scan_key] = {"id": prev[0], "fixed": prev[1] is not None, "repeat": True}
+            else:
+                scan_id = db.save_scan(conn, user["id"] if user else None, best_cls, best_p, file_key)
+                seen[scan_key] = {"id": scan_id, "fixed": False, "repeat": False}
+                if user:
+                    db.add_points(conn, user["id"], POINTS_PER_SCAN)
+                    st.toast(f"+{POINTS_PER_SCAN} баллов!", icon="⭐")
+        elif st.session_state.get("shown_scan") != scan_key:
+            seen[scan_key]["repeat"] = True  # вернулись к фото, которое уже проверяли (А→Б→А)
+        st.session_state.shown_scan = scan_key  # клики на том же фото повтором не считаются
+        scan = seen[scan_key]
 
         col_img, col_res = st.columns([1, 1.3])
-        col_img.image(image, use_container_width=True)
+        col_img.image(image, width="stretch")
         with col_res:
+            if scan["repeat"] and user:
+                st.caption("Это фото вы уже проверяли — баллы за него были начислены раньше.")
             if best_p < LOW_CONFIDENCE:
                 st.warning(
                     f"Модель не уверена ({best_p:.0%}). Возможно, это **{rus(best_cls)}** или "
@@ -229,12 +272,12 @@ elif page == "Распознать отходы":
         options = [c for c in WASTE_INFO] + ["cardboard", "organic", "other"]
         labels = {**{c: rus(c) for c in WASTE_INFO}, "cardboard": "Картон", "organic": "Органика", "other": "Другое"}
         correct = fc1.selectbox("Правильный тип", options, format_func=lambda c: labels[c])
-        if fc2.button("Отправить исправление", disabled=st.session_state.last_scan["fixed"]):
+        if fc2.button("Отправить исправление", disabled=scan["fixed"]):
             folder = FEEDBACK_DIR / correct
             folder.mkdir(parents=True, exist_ok=True)
             image.save(folder / f"{file_key}.jpg", quality=92)
-            db.correct_scan(conn, st.session_state.last_scan["id"], correct)
-            st.session_state.last_scan["fixed"] = True
+            db.correct_scan(conn, scan["id"], correct)
+            scan["fixed"] = True  # одно исправление (и одни баллы за него) на фото
             if user:
                 db.add_points(conn, user["id"], POINTS_PER_FEEDBACK)
             st.success(f"Спасибо! Фото сохранено как «{labels[correct]}»."
@@ -247,6 +290,10 @@ elif page == "Распознать отходы":
 # =====================================================================
 elif page == "Викторина":
     st.title("🧩 Викторина по сортировке")
+    if user:
+        left = max(0, QUIZ_REWARDS_PER_DAY - db.rewarded_quizzes_last_day(conn, user["id"]))
+        st.caption(f"Викторин с баллами осталось: {left} из {QUIZ_REWARDS_PER_DAY} в сутки. "
+                   "Без баллов можно тренироваться сколько угодно.")
     mode = st.radio("Режим", ["Готовые вопросы", "Вопросы по своему тексту (ИИ)"], horizontal=True)
 
     if mode == "Готовые вопросы":
@@ -284,15 +331,25 @@ elif page == "Викторина":
                 score = sum(st.session_state.quiz_answers[i] == q["correct"] for i, q in enumerate(quiz["questions"]))
                 st.session_state.quiz_score = score
                 if user:
-                    db.save_quiz(conn, user["id"], score, len(quiz["questions"]), quiz["mode"])
-                    db.add_points(conn, user["id"], score * POINTS_PER_CORRECT_ANSWER)
+                    # лимит: баллы только за первые QUIZ_REWARDS_PER_DAY викторин за 24 часа (см. content.py)
+                    earned = score * POINTS_PER_CORRECT_ANSWER
+                    if db.rewarded_quizzes_last_day(conn, user["id"]) >= QUIZ_REWARDS_PER_DAY:
+                        earned = 0
+                    db.save_quiz(conn, user["id"], score, len(quiz["questions"]), quiz["mode"], earned)
+                    db.add_points(conn, user["id"], earned)
+                    st.session_state.quiz_points = earned
                 st.rerun()
         if st.session_state.quiz_done:
             total = len(quiz["questions"])
             score = st.session_state.get("quiz_score", 0)
             st.subheader(f"Результат: {score} из {total}")
             if user:
-                st.success(f"+{score * POINTS_PER_CORRECT_ANSWER} баллов")
+                earned = st.session_state.get("quiz_points", 0)
+                if earned or not score:
+                    st.success(f"+{earned} баллов")
+                else:
+                    st.info(f"Баллы начисляются за первые {QUIZ_REWARDS_PER_DAY} викторины в сутки — "
+                            "лимит исчерпан. Результат сохранён в профиле, тренироваться можно дальше.")
             for i, q in enumerate(quiz["questions"]):
                 ok = st.session_state.quiz_answers[i] == q["correct"]
                 st.markdown(f"{'✅' if ok else '❌'} **{q['q']}** — правильно: *{q['correct']}*. {q.get('why', '')}")
@@ -302,7 +359,8 @@ elif page == "Викторина":
 # =====================================================================
 elif page == "Рейтинг":
     st.title("🏆 Рейтинг")
-    st.caption(f"Баллы: +{POINTS_PER_SCAN} за распознавание, +{POINTS_PER_CORRECT_ANSWER} за правильный ответ, "
+    st.caption(f"Баллы: +{POINTS_PER_SCAN} за распознавание, +{POINTS_PER_CORRECT_ANSWER} за правильный ответ "
+               f"(в {QUIZ_REWARDS_PER_DAY} викторинах в сутки), "
                f"+{POINTS_PER_FEEDBACK} за исправление ошибки модели.")
     t1, t2 = st.tabs(["Участники", "Школы"])
     with t1:
@@ -310,7 +368,7 @@ elif page == "Рейтинг":
         if rows:
             df = pd.DataFrame(rows, columns=["Имя", "Школа / класс", "Баллы"])
             df.index = range(1, len(df) + 1)
-            st.dataframe(df, use_container_width=True)
+            st.dataframe(df, width="stretch")
         else:
             st.info("Пока никого нет — зарегистрируйтесь первым!")
     with t2:
@@ -320,7 +378,7 @@ elif page == "Рейтинг":
             st.altair_chart(
                 alt.Chart(df).mark_bar(color="#2E7D32").encode(
                     x=alt.X("Баллы:Q"), y=alt.Y("Школа / класс:N", sort="-x")),
-                use_container_width=True,
+                width="stretch",
             )
         else:
             st.info("Укажите школу при регистрации, чтобы она появилась в рейтинге.")
@@ -330,7 +388,7 @@ elif page == "Рейтинг":
         st.subheader("Что чаще всего распознают")
         df = pd.DataFrame([(rus(c), n) for c, n in stats["by_class"]], columns=["Тип", "Количество"])
         st.altair_chart(alt.Chart(df).mark_arc(innerRadius=50).encode(
-            theta="Количество:Q", color="Тип:N"), use_container_width=True)
+            theta="Количество:Q", color="Тип:N"), width="stretch")
 
 # =====================================================================
 # ПРОФИЛЬ
@@ -348,12 +406,12 @@ elif page == "Профиль" and user:
         st.subheader("Последние распознавания")
         st.dataframe(pd.DataFrame(
             [(rus(p), f"{c:.0%}", rus(f) if f else "", d) for p, c, f, d in scans],
-            columns=["Ответ модели", "Уверенность", "Исправлено на", "Дата"]), use_container_width=True)
+            columns=["Ответ модели", "Уверенность", "Исправлено на", "Дата"]), width="stretch")
     if quizzes:
         st.subheader("Викторины")
         st.dataframe(pd.DataFrame(
-            [(f"{s}/{t}", "ИИ" if m == "ai" else "Готовые", d) for s, t, m, d in quizzes],
-            columns=["Результат", "Режим", "Дата"]), use_container_width=True)
+            [(f"{s}/{t}", "ИИ" if m == "ai" else "Готовые", pts, d) for s, t, m, pts, d in quizzes],
+            columns=["Результат", "Режим", "Баллы", "Дата"]), width="stretch")
 
 # =====================================================================
 # ВХОД / РЕГИСТРАЦИЯ
@@ -386,6 +444,4 @@ elif page == "Регистрация":
                 (st.success if ok else st.error)(msg)
 
 # ---------- Баллы в меню (в самом конце, после всех начислений) ----------
-if user:
-    fresh = db.get_user(conn, user["id"])
-    points_slot.success(f"👤 {fresh['name']} · ⭐ {fresh['points']} баллов")
+show_points()

@@ -1,9 +1,14 @@
-# torch только для процессора (без видеокарты) — в ~5 раз легче, сервер Streamlit Cloud без GPU
+# torch только для процессора (без видеокарты) — в ~5 раз легче, сервер Streamlit Cloud без GPU.
+# Отсюда pip и uv берут CPU-сборки (версия вида 2.x.x+cpu) вместо CUDA-сборки с PyPI (+2–3 ГБ nvidia-*).
+# Проверяется в CI без установки: .github/workflows/requirements.yml.
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch
 torchvision
 ultralytics>=8.3
-streamlit>=1.40
+# OpenCV 5 убрал cv2.CascadeClassifier, на котором держится фильтр «в кадре лицо» (core/model.py).
+# Без ограничения свежая установка ставит 5.x — и страница распознавания падает с ошибкой.
+opencv-python>=4.6,<5
+streamlit>=1.51  # width="stretch" у st.image, st.dataframe и st.altair_chart — с 1.51
 openai>=1.40
 python-dotenv
 pandas
