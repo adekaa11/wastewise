@@ -20,7 +20,7 @@ from core.content import (LOW_CONFIDENCE, POINTS_PER_CORRECT_ANSWER, POINTS_PER_
 from core.model import DETECTOR_PATH, check_scene, classify, load_image, load_model
 from core.pg import connection_hint
 from core.quiz import ai_available, generate_questions, random_questions
-from core import ui
+from core import storage, ui
 
 ROOT = Path(__file__).resolve().parent
 
@@ -115,6 +115,28 @@ def _postgres_keys(secrets, prefix=""):
             yield from _postgres_keys(value, f"{prefix}{key}.")
         elif isinstance(value, str) and value.strip().startswith(("postgres://", "postgresql://")):
             yield f"{prefix}{key}"
+
+
+@st.cache_resource
+def get_feedback_store():
+    """Куда сохранять фото «Модель ошиблась» — это наш датасет для дообучения (core/storage.py).
+
+    SUPABASE_URL + SUPABASE_SERVICE_KEY (Secrets) → приватный бакет Supabase Storage: фото не пропадают
+    при перезапуске сайта. Без них — папка data/feedback, как раньше. Инструкция: docs/SUPABASE.md
+    """
+    url, key = setting("SUPABASE_URL"), setting("SUPABASE_SERVICE_KEY")
+    if not (url and key):
+        log.info("Фото «Модель ошиблась»: папка data/feedback (на Streamlit Cloud стирается; "
+                 "задайте SUPABASE_URL и SUPABASE_SERVICE_KEY)")
+        return storage.LocalFeedbackStore(FEEDBACK_DIR)
+    log.info("Фото «Модель ошиблась»: Supabase Storage, приватный бакет %s", storage.BUCKET)
+    store = storage.SupabaseFeedbackStore(url, key)
+    try:
+        if store.bucket_is_public():
+            log.warning("Бакет feedback публичный — сделайте его приватным (docs/SUPABASE.md)")
+    except Exception:
+        pass  # проверка необязательная: бакета может ещё не быть — сайт создаст его приватным при первом фото
+    return store
 
 
 try:
@@ -330,15 +352,18 @@ elif page == "Распознать отходы":
         labels = {**{c: rus(c) for c in WASTE_INFO}, "cardboard": "Картон", "organic": "Органика", "other": "Другое"}
         correct = fc1.selectbox("Правильный тип", options, format_func=lambda c: labels[c])
         if fc2.button("Отправить исправление", disabled=scan["fixed"]):
-            folder = FEEDBACK_DIR / correct
-            folder.mkdir(parents=True, exist_ok=True)
-            image.save(folder / f"{file_key}.jpg", quality=92)
-            db.correct_scan(conn, scan["id"], correct)
-            scan["fixed"] = True  # одно исправление (и одни баллы за него) на фото
-            if user:
-                db.add_points(conn, user["id"], POINTS_PER_FEEDBACK)
-            st.success(f"Спасибо! Фото сохранено как «{labels[correct]}»."
-                       + (f" +{POINTS_PER_FEEDBACK} баллов." if user else ""))
+            try:  # фото + метка пользователя → наш датасет (Supabase Storage или data/feedback)
+                path = get_feedback_store().save(correct, file_key, storage.encode_photo(image))
+            except storage.StorageError:
+                log.exception("Не удалось сохранить фото для дообучения")
+                st.error("Не удалось сохранить фото. Попробуйте ещё раз через минуту.")
+            else:  # баллы и отметка «исправлено» — только если фото действительно сохранилось
+                db.correct_scan(conn, scan["id"], correct, path)
+                scan["fixed"] = True  # одно исправление (и одни баллы за него) на фото
+                if user:
+                    db.add_points(conn, user["id"], POINTS_PER_FEEDBACK)
+                st.success(f"Спасибо! Фото сохранено как «{labels[correct]}»."
+                           + (f" +{POINTS_PER_FEEDBACK} баллов." if user else ""))
         if not user:
             st.caption("Войдите, чтобы получать баллы и участвовать в рейтинге.")
 
