@@ -45,6 +45,12 @@ def init_db(conn):
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
     """)
+    # Миграция для уже существующих баз: столбец с отпечатком фото (md5 файла).
+    # По нему видно, что пользователь уже присылал это фото, и баллы второй раз не даются.
+    columns = [row[1] for row in conn.execute("PRAGMA table_info(scans)")]
+    if "image_hash" not in columns:
+        conn.execute("ALTER TABLE scans ADD COLUMN image_hash TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_scans_user_hash ON scans(user_id, image_hash)")
     conn.commit()
 
 
@@ -110,13 +116,21 @@ def add_points(conn, user_id, points):
 
 # ---------- Распознавания и викторины ----------
 
-def save_scan(conn, user_id, predicted, confidence):
+def save_scan(conn, user_id, predicted, confidence, image_hash=None):
     cur = conn.execute(
-        "INSERT INTO scans (user_id, predicted, confidence) VALUES (?, ?, ?)",
-        (user_id, predicted, confidence),
+        "INSERT INTO scans (user_id, predicted, confidence, image_hash) VALUES (?, ?, ?, ?)",
+        (user_id, predicted, confidence, image_hash),
     )
     conn.commit()
     return cur.lastrowid
+
+
+def find_scan(conn, user_id, image_hash):
+    """Это фото пользователь уже присылал? Возвращает (id, исправленный_класс) или None."""
+    return conn.execute(
+        "SELECT id, corrected FROM scans WHERE user_id = ? AND image_hash = ? ORDER BY id LIMIT 1",
+        (user_id, image_hash),
+    ).fetchone()
 
 
 def correct_scan(conn, scan_id, corrected):

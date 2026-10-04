@@ -102,7 +102,7 @@ def social_links(align="flex-start"):
 
 
 # ---------- Состояние сессии ----------
-for k, v in {"user_id": None, "quiz": None, "quiz_answers": {}, "quiz_done": False, "last_scan": None}.items():
+for k, v in {"user_id": None, "quiz": None, "quiz_answers": {}, "quiz_done": False, "seen_scans": {}}.items():
     st.session_state.setdefault(k, v)
 
 user = db.get_user(conn, st.session_state.user_id) if st.session_state.user_id else None
@@ -182,7 +182,9 @@ elif page == "Распознать отходы":
     if raw and image is None:  # раньше битый файл ронял страницу с длинной ошибкой Python
         st.error("Не удалось открыть файл как изображение. Попробуйте другое фото (JPG, PNG или WEBP).")
 
-    if image is not None:
+    if image is None:
+        st.session_state.shown_scan = None  # фото убрали — следующее открытие уже «возврат»
+    else:
         file_key = hashlib.md5(raw).hexdigest()
 
         with st.spinner("Нейросеть анализирует фото…"):
@@ -204,17 +206,33 @@ elif page == "Распознать отходы":
         best_cls, best_p = ranked[0]
         info = WASTE_INFO.get(best_cls, {})
 
-        # одно и то же фото не даёт баллы повторно
-        if st.session_state.last_scan is None or st.session_state.last_scan["key"] != file_key:
-            scan_id = db.save_scan(conn, user["id"] if user else None, best_cls, best_p)
-            st.session_state.last_scan = {"key": file_key, "id": scan_id, "fixed": False}
-            if user:
-                db.add_points(conn, user["id"], POINTS_PER_SCAN)
-                st.toast(f"+{POINTS_PER_SCAN} баллов!", icon="⭐")
+        # Одно и то же фото не даёт баллы повторно.
+        # Раньше помнилось только ПОСЛЕДНЕЕ фото сессии: чередуя два снимка (А→Б→А→Б…),
+        # можно было бесконечно получать баллы за распознавание и за «исправление».
+        # Теперь: (1) в сессии помним все проверенные фото, (2) у вошедшего пользователя
+        # дополнительно смотрим в базу — так не помогает и выход/вход в аккаунт.
+        scan_key = f"{user['id'] if user else 0}:{file_key}"
+        seen = st.session_state.seen_scans
+        if scan_key not in seen:
+            prev = db.find_scan(conn, user["id"], file_key) if user else None
+            if prev:
+                seen[scan_key] = {"id": prev[0], "fixed": prev[1] is not None, "repeat": True}
+            else:
+                scan_id = db.save_scan(conn, user["id"] if user else None, best_cls, best_p, file_key)
+                seen[scan_key] = {"id": scan_id, "fixed": False, "repeat": False}
+                if user:
+                    db.add_points(conn, user["id"], POINTS_PER_SCAN)
+                    st.toast(f"+{POINTS_PER_SCAN} баллов!", icon="⭐")
+        elif st.session_state.get("shown_scan") != scan_key:
+            seen[scan_key]["repeat"] = True  # вернулись к фото, которое уже проверяли (А→Б→А)
+        st.session_state.shown_scan = scan_key  # клики на том же фото повтором не считаются
+        scan = seen[scan_key]
 
         col_img, col_res = st.columns([1, 1.3])
         col_img.image(image, use_container_width=True)
         with col_res:
+            if scan["repeat"] and user:
+                st.caption("Это фото вы уже проверяли — баллы за него были начислены раньше.")
             if best_p < LOW_CONFIDENCE:
                 st.warning(
                     f"Модель не уверена ({best_p:.0%}). Возможно, это **{rus(best_cls)}** или "
@@ -244,12 +262,12 @@ elif page == "Распознать отходы":
         options = [c for c in WASTE_INFO] + ["cardboard", "organic", "other"]
         labels = {**{c: rus(c) for c in WASTE_INFO}, "cardboard": "Картон", "organic": "Органика", "other": "Другое"}
         correct = fc1.selectbox("Правильный тип", options, format_func=lambda c: labels[c])
-        if fc2.button("Отправить исправление", disabled=st.session_state.last_scan["fixed"]):
+        if fc2.button("Отправить исправление", disabled=scan["fixed"]):
             folder = FEEDBACK_DIR / correct
             folder.mkdir(parents=True, exist_ok=True)
             image.save(folder / f"{file_key}.jpg", quality=92)
-            db.correct_scan(conn, st.session_state.last_scan["id"], correct)
-            st.session_state.last_scan["fixed"] = True
+            db.correct_scan(conn, scan["id"], correct)
+            scan["fixed"] = True  # одно исправление (и одни баллы за него) на фото
             if user:
                 db.add_points(conn, user["id"], POINTS_PER_FEEDBACK)
             st.success(f"Спасибо! Фото сохранено как «{labels[correct]}»."
