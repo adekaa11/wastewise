@@ -10,3 +10,12 @@ def test_all_pages_render_with_data(app):
     for page in PAGES:
         app.go(page)  # app.run() внутри проверяет, что исключений нет
     assert app.at.dataframe, "в профиле должна быть таблица распознаваний"
+
+
+def test_sidebar_points_stay_when_photo_is_rejected(app):
+    """Фильтр «не мусор» обрывает страницу через st.stop() — строка с баллами в меню не должна пропадать."""
+    app.register_and_login()
+    app.detector.boxes = [(0, (0, 0, 320, 240))]  # человек на весь кадр
+    app.go("Распознать отходы").upload(photo("orange"))
+    assert any(b.label.startswith("Это точно отход") for b in app.at.button)  # фото действительно отклонено
+    assert any("баллов" in s.value for s in app.at.sidebar.success)

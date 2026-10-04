@@ -40,14 +40,16 @@ class FakeClassifier:
 
 
 class FakeDetector:
-    """Вместо YOLO-детектора: в кадре никого нет."""
+    """Вместо YOLO-детектора: по умолчанию в кадре никого нет."""
 
     def __init__(self):
         self.calls = 0
+        self.boxes = []  # что «увидит» детектор: [(класс COCO, (x1, y1, x2, y2)), ...]
 
     def predict(self, image, **kwargs):
         self.calls += 1
-        return [SimpleNamespace(boxes=SimpleNamespace(cls=_List(), xyxy=_List()))]
+        boxes = SimpleNamespace(cls=_List(c for c, _ in self.boxes), xyxy=_List(b for _, b in self.boxes))
+        return [SimpleNamespace(boxes=boxes)]
 
 
 def photo(color, size=(320, 240), fmt="JPEG"):

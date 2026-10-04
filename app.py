@@ -126,6 +126,15 @@ with st.sidebar:
     st.caption(AUTHOR)
     st.markdown(social_links(), unsafe_allow_html=True)
 
+
+def show_points():
+    """Баллы в меню. Вызывается в самом конце скрипта (после всех начислений) и перед st.stop():
+    st.stop() обрывает скрипт, и раньше строка с баллами в меню из-за этого пропадала."""
+    if user:
+        fresh = db.get_user(conn, user["id"])
+        points_slot.success(f"👤 {fresh['name']} · ⭐ {fresh['points']} баллов")
+
+
 # =====================================================================
 # ГЛАВНАЯ
 # =====================================================================
@@ -199,6 +208,7 @@ elif page == "Распознать отходы":
                 if st.button("Это точно отход — распознать"):
                     st.session_state.force_key = file_key
                     st.rerun()
+            show_points()
             st.stop()
 
         with st.spinner("Нейросеть анализирует фото…"):
@@ -419,6 +429,4 @@ elif page == "Регистрация":
                 (st.success if ok else st.error)(msg)
 
 # ---------- Баллы в меню (в самом конце, после всех начислений) ----------
-if user:
-    fresh = db.get_user(conn, user["id"])
-    points_slot.success(f"👤 {fresh['name']} · ⭐ {fresh['points']} баллов")
+show_points()
