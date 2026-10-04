@@ -3,6 +3,7 @@
 Запуск:  streamlit run app.py
 """
 import base64
+import logging
 import os
 import hashlib
 import uuid
@@ -17,6 +18,7 @@ from core import db
 from core.content import (LOW_CONFIDENCE, POINTS_PER_CORRECT_ANSWER, POINTS_PER_FEEDBACK,
                           POINTS_PER_SCAN, QUIZ_REWARDS_PER_DAY, WASTE_INFO)
 from core.model import DETECTOR_PATH, check_scene, classify, load_image, load_model
+from core.pg import connection_hint
 from core.quiz import ai_available, generate_questions, random_questions
 from core import ui
 
@@ -32,6 +34,17 @@ try:  # на Streamlit Cloud ключ хранится в «Secrets», а не �
             os.environ[key] = st.secrets[key]
 except Exception:
     pass
+
+
+def setting(key):
+    """Настройка из .env / переменной окружения (локально) или из st.secrets (Streamlit Cloud)."""
+    if os.getenv(key):
+        return os.getenv(key)
+    try:
+        return st.secrets.get(key)
+    except Exception:  # файла secrets.toml нет — локально это нормально
+        return None
+
 
 st.set_page_config(page_title="WasteWise — сортировка отходов", page_icon="♻️", layout="wide")
 ui.inject()
@@ -63,12 +76,22 @@ def cached_classify(file_key: str, _image):
 
 @st.cache_resource
 def get_db():
-    conn = db.get_conn()
+    # DATABASE_URL (Streamlit Cloud → Settings → Secrets) → Supabase: аккаунты и баллы переживают
+    # перезапуск сайта. Без него — локальный файл data/app.db, как раньше. Инструкция: docs/SUPABASE.md
+    conn = db.get_conn(setting("DATABASE_URL"))
     db.init_db(conn)
     return conn
 
 
-conn = get_db()
+try:
+    conn = get_db()
+except Exception:  # база недоступна: Supabase на паузе, неверный пароль, нет сети
+    logging.getLogger("wastewise").exception("Не удалось подключиться к базе данных")  # подробности — в логах
+    st.error("Не удалось подключиться к базе данных. Попробуйте обновить страницу через минуту.")
+    hint = connection_hint(setting("DATABASE_URL") or "")
+    if hint:  # подсказка без секретов: пароль и адрес не показываются
+        st.caption(hint)
+    st.stop()
 
 
 def b64(path):
