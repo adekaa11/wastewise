@@ -18,16 +18,38 @@ DB_PATH = Path(__file__).resolve().parent.parent / "data" / "app.db"
 # Поэтому каждая функция ниже работает с базой по очереди — под общим «замком».
 _LOCK = threading.RLock()
 
+# Функции ниже работают и с SQLite (локально, в тестах), и с Postgres/Supabase (на сайте,
+# обёртка core/pg.py с тем же интерфейсом: execute с «?», commit, rollback).
+# Различия диалектов собраны здесь, остальной SQL общий.
+_DAY_AGO = {  # «24 часа назад» (время в базе — UTC)
+    "sqlite": "datetime('now', '-1 day')",
+    "postgres": "timezone('utc', now()) - interval '1 day'",
+}
+
+
+def _dialect(conn):
+    """'sqlite' для обычного sqlite3-соединения, 'postgres' — для обёртки из core/pg.py."""
+    return getattr(conn, "dialect", "sqlite")
+
 
 def _locked(func):
     @functools.wraps(func)
     def wrapper(conn, *args, **kwargs):
         with _LOCK:
-            try:
-                return func(conn, *args, **kwargs)
-            except Exception:
-                conn.rollback()  # не оставлять недописанную транзакцию следующему запросу
-                raise
+            for attempt in range(2):
+                try:
+                    return func(conn, *args, **kwargs)
+                except Exception as error:
+                    try:
+                        conn.rollback()  # не оставлять недописанную транзакцию следующему запросу
+                    except Exception:
+                        pass  # соединение уже оборвано — откатывать нечего
+                    # Сетевая база (Supabase) может оборвать соединение: перезапуск сервера, сбой сети.
+                    # Тогда переподключаемся и повторяем запрос один раз. У SQLite такого не бывает.
+                    is_disconnect = getattr(conn, "is_disconnect", lambda e: False)
+                    if attempt or not is_disconnect(error):
+                        raise
+                    conn.reconnect()
     return wrapper
 
 
@@ -112,28 +134,39 @@ def register_user(conn, username, password, name, school=""):
     if len(password) < 6:
         return False, "Пароль должен быть не короче 6 символов."
     hashed = hash_password(password)  # медленная операция — до замка, чтобы не задерживать других
-    with _LOCK:  # проверка «логин свободен» и запись идут одним куском, без вклинивания
-        if conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
-            return False, "Такой логин уже занят."
-        try:
-            conn.execute(
-                "INSERT INTO users (username, password, name, school) VALUES (?, ?, ?, ?)",
-                (username, hashed, name.strip(), school.strip()),
-            )
-            conn.commit()
-        except sqlite3.IntegrityError:  # логин заняли в ту же секунду (например, из другого процесса)
-            conn.rollback()
-            return False, "Такой логин уже занят."
+    if not _insert_user(conn, username, hashed, name.strip(), school.strip()):
+        return False, "Такой логин уже занят."
     return True, "Аккаунт создан. Теперь войдите."
 
 
+@_locked
+def _insert_user(conn, username, hashed, name, school):
+    """Проверка «логин свободен» и запись — одним куском под замком. False, если логин занят."""
+    if conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
+        return False
+    try:
+        conn.execute(
+            "INSERT INTO users (username, password, name, school) VALUES (?, ?, ?, ?)",
+            (username, hashed, name, school),
+        )
+        conn.commit()
+    except conn.IntegrityError:  # логин заняли в ту же секунду (например, из другого процесса)
+        conn.rollback()
+        return False
+    return True
+
+
 def authenticate(conn, username, password):
-    with _LOCK:
-        row = conn.execute("SELECT id, password FROM users WHERE username = ?", (username.strip(),)).fetchone()
+    row = _password_row(conn, username.strip())
     # проверка пароля (PBKDF2, ~0,1 с) — уже вне замка, чтобы не тормозить остальных
     if row and verify_password(row[1], password):
         return row[0]
     return None
+
+
+@_locked
+def _password_row(conn, username):
+    return conn.execute("SELECT id, password FROM users WHERE username = ?", (username,)).fetchone()
 
 
 @_locked
@@ -157,12 +190,12 @@ def add_points(conn, user_id, points):
 
 @_locked
 def save_scan(conn, user_id, predicted, confidence, image_hash=None):
-    cur = conn.execute(
-        "INSERT INTO scans (user_id, predicted, confidence, image_hash) VALUES (?, ?, ?, ?)",
+    scan_id = conn.execute(  # RETURNING id работает и в SQLite (3.35+), и в Postgres — lastrowid только в SQLite
+        "INSERT INTO scans (user_id, predicted, confidence, image_hash) VALUES (?, ?, ?, ?) RETURNING id",
         (user_id, predicted, confidence, image_hash),
-    )
+    ).fetchone()[0]
     conn.commit()
-    return cur.lastrowid
+    return scan_id
 
 
 @_locked
@@ -197,7 +230,7 @@ def rewarded_quizzes_last_day(conn, user_id):
     а у школьников Астаны UTC+5, и «полночь» сервера пришлась бы на 5 утра.
     """
     return conn.execute(
-        "SELECT COUNT(*) FROM quiz_results WHERE user_id = ? AND points > 0 AND date >= datetime('now', '-1 day')",
+        f"SELECT COUNT(*) FROM quiz_results WHERE user_id = ? AND points > 0 AND date >= {_DAY_AGO[_dialect(conn)]}",
         (user_id,),
     ).fetchone()[0]
 
