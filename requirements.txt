@@ -1,4 +1,6 @@
-# torch только для процессора (без видеокарты) — в ~5 раз легче, сервер Streamlit Cloud без GPU
+# torch только для процессора (без видеокарты) — в ~5 раз легче, сервер Streamlit Cloud без GPU.
+# Отсюда pip и uv берут CPU-сборки (версия вида 2.x.x+cpu) вместо CUDA-сборки с PyPI (+2–3 ГБ nvidia-*).
+# Проверяется в CI без установки: .github/workflows/requirements.yml.
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch
 torchvision

@@ -1,0 +1,33 @@
+# Что поставит Streamlit Cloud из requirements.txt — без установки (--dry-run).
+# Проверяем: torch/torchvision — CPU-сборки, никаких CUDA-библиотек (nvidia-*, triton), OpenCV < 5.
+# pip и uv разрешают зависимости по-разному, поэтому проверяем оба.
+name: requirements
+
+on:
+  push:
+    paths: ["requirements.txt", ".github/check_requirements.py", ".github/workflows/requirements.yml"]
+  pull_request:
+    paths: ["requirements.txt", ".github/check_requirements.py", ".github/workflows/requirements.yml"]
+
+jobs:
+  cpu-torch:
+    name: CPU-сборка torch, OpenCV < 5 (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Что поставит pip
+        run: |
+          python -m pip install --upgrade pip uv
+          pip install --dry-run --ignore-installed --quiet --report pip.json -r requirements.txt
+      - name: Что поставит uv
+        run: uv pip install --dry-run --system -r requirements.txt 2>&1 | tee uv.txt
+      - name: Проверка
+        run: python .github/check_requirements.py pip.json uv.txt
