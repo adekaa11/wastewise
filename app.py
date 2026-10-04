@@ -191,7 +191,7 @@ elif page == "Распознать отходы":
             problem = cached_check_scene(file_key, image)
         if problem and st.session_state.get("force_key") != file_key:
             c_img, c_msg = st.columns([1, 1.3])
-            c_img.image(image, use_container_width=True)
+            c_img.image(image, width="stretch")
             with c_msg:
                 st.warning(f"🤔 {problem}")
                 st.caption("Модель обучена только на отходах. На других фото она всё равно выберет "
@@ -229,7 +229,7 @@ elif page == "Распознать отходы":
         scan = seen[scan_key]
 
         col_img, col_res = st.columns([1, 1.3])
-        col_img.image(image, use_container_width=True)
+        col_img.image(image, width="stretch")
         with col_res:
             if scan["repeat"] and user:
                 st.caption("Это фото вы уже проверяли — баллы за него были начислены раньше.")
@@ -343,7 +343,7 @@ elif page == "Рейтинг":
         if rows:
             df = pd.DataFrame(rows, columns=["Имя", "Школа / класс", "Баллы"])
             df.index = range(1, len(df) + 1)
-            st.dataframe(df, use_container_width=True)
+            st.dataframe(df, width="stretch")
         else:
             st.info("Пока никого нет — зарегистрируйтесь первым!")
     with t2:
@@ -353,7 +353,7 @@ elif page == "Рейтинг":
             st.altair_chart(
                 alt.Chart(df).mark_bar(color="#2E7D32").encode(
                     x=alt.X("Баллы:Q"), y=alt.Y("Школа / класс:N", sort="-x")),
-                use_container_width=True,
+                width="stretch",
             )
         else:
             st.info("Укажите школу при регистрации, чтобы она появилась в рейтинге.")
@@ -363,7 +363,7 @@ elif page == "Рейтинг":
         st.subheader("Что чаще всего распознают")
         df = pd.DataFrame([(rus(c), n) for c, n in stats["by_class"]], columns=["Тип", "Количество"])
         st.altair_chart(alt.Chart(df).mark_arc(innerRadius=50).encode(
-            theta="Количество:Q", color="Тип:N"), use_container_width=True)
+            theta="Количество:Q", color="Тип:N"), width="stretch")
 
 # =====================================================================
 # ПРОФИЛЬ
@@ -381,12 +381,12 @@ elif page == "Профиль" and user:
         st.subheader("Последние распознавания")
         st.dataframe(pd.DataFrame(
             [(rus(p), f"{c:.0%}", rus(f) if f else "", d) for p, c, f, d in scans],
-            columns=["Ответ модели", "Уверенность", "Исправлено на", "Дата"]), use_container_width=True)
+            columns=["Ответ модели", "Уверенность", "Исправлено на", "Дата"]), width="stretch")
     if quizzes:
         st.subheader("Викторины")
         st.dataframe(pd.DataFrame(
             [(f"{s}/{t}", "ИИ" if m == "ai" else "Готовые", d) for s, t, m, d in quizzes],
-            columns=["Результат", "Режим", "Дата"]), use_container_width=True)
+            columns=["Результат", "Режим", "Дата"]), width="stretch")
 
 # =====================================================================
 # ВХОД / РЕГИСТРАЦИЯ
