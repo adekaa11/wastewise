@@ -22,6 +22,22 @@ sys.path.insert(0, str(ROOT))
 from core import db, model  # noqa: E402
 
 
+@pytest.fixture
+def store(tmp_path, monkeypatch):
+    """Пустая база с таблицами — та же, с которой работает приложение."""
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "app.db")
+    conn = db.get_conn()
+    db.init_db(conn)
+    yield conn
+    conn.close()
+
+
+def backdate(conn, table, row_id, hours):
+    """Сдвинуть дату записи в прошлое (для проверки окна «24 часа»)."""
+    conn.execute(f"UPDATE {table} SET date = datetime('now', '-{int(hours)} hours') WHERE id = ?", (row_id,))
+    conn.commit()
+
+
 class _List(list):
     def tolist(self):
         return list(self)
