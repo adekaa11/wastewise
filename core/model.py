@@ -68,6 +68,8 @@ def _has_face(gray: Image.Image):
     import cv2
     import numpy as np
 
+    if not hasattr(cv2, "CascadeClassifier"):  # OpenCV 5+: детектора нет — пропускаем проверку,
+        return False                          # людей в кадре всё равно ловит YOLO-детектор ниже
     arr = cv2.equalizeHist(np.array(gray))
     side = int(min(arr.shape) * 0.15)  # лицо должно быть заметным, а не человечек на фоне
     cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
