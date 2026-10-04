@@ -6,4 +6,5 @@ python-dotenv
 pandas
 altair
 pillow
+psycopg[binary]>=3.2  # тесты хранилища на Postgres (если задан TEST_DATABASE_URL)
 pytest
