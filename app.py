@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 from core import db
 from core.content import (LOW_CONFIDENCE, POINTS_PER_CORRECT_ANSWER, POINTS_PER_FEEDBACK,
-                          POINTS_PER_SCAN, WASTE_INFO)
+                          POINTS_PER_SCAN, QUIZ_REWARDS_PER_DAY, WASTE_INFO)
 from core.model import DETECTOR_PATH, check_scene, classify, load_image, load_model
 from core.quiz import ai_available, generate_questions, random_questions
 from core import ui
@@ -290,6 +290,10 @@ elif page == "Распознать отходы":
 # =====================================================================
 elif page == "Викторина":
     st.title("🧩 Викторина по сортировке")
+    if user:
+        left = max(0, QUIZ_REWARDS_PER_DAY - db.rewarded_quizzes_last_day(conn, user["id"]))
+        st.caption(f"Викторин с баллами осталось: {left} из {QUIZ_REWARDS_PER_DAY} в сутки. "
+                   "Без баллов можно тренироваться сколько угодно.")
     mode = st.radio("Режим", ["Готовые вопросы", "Вопросы по своему тексту (ИИ)"], horizontal=True)
 
     if mode == "Готовые вопросы":
@@ -327,15 +331,25 @@ elif page == "Викторина":
                 score = sum(st.session_state.quiz_answers[i] == q["correct"] for i, q in enumerate(quiz["questions"]))
                 st.session_state.quiz_score = score
                 if user:
-                    db.save_quiz(conn, user["id"], score, len(quiz["questions"]), quiz["mode"])
-                    db.add_points(conn, user["id"], score * POINTS_PER_CORRECT_ANSWER)
+                    # лимит: баллы только за первые QUIZ_REWARDS_PER_DAY викторин за 24 часа (см. content.py)
+                    earned = score * POINTS_PER_CORRECT_ANSWER
+                    if db.rewarded_quizzes_last_day(conn, user["id"]) >= QUIZ_REWARDS_PER_DAY:
+                        earned = 0
+                    db.save_quiz(conn, user["id"], score, len(quiz["questions"]), quiz["mode"], earned)
+                    db.add_points(conn, user["id"], earned)
+                    st.session_state.quiz_points = earned
                 st.rerun()
         if st.session_state.quiz_done:
             total = len(quiz["questions"])
             score = st.session_state.get("quiz_score", 0)
             st.subheader(f"Результат: {score} из {total}")
             if user:
-                st.success(f"+{score * POINTS_PER_CORRECT_ANSWER} баллов")
+                earned = st.session_state.get("quiz_points", 0)
+                if earned or not score:
+                    st.success(f"+{earned} баллов")
+                else:
+                    st.info(f"Баллы начисляются за первые {QUIZ_REWARDS_PER_DAY} викторины в сутки — "
+                            "лимит исчерпан. Результат сохранён в профиле, тренироваться можно дальше.")
             for i, q in enumerate(quiz["questions"]):
                 ok = st.session_state.quiz_answers[i] == q["correct"]
                 st.markdown(f"{'✅' if ok else '❌'} **{q['q']}** — правильно: *{q['correct']}*. {q.get('why', '')}")
@@ -345,7 +359,8 @@ elif page == "Викторина":
 # =====================================================================
 elif page == "Рейтинг":
     st.title("🏆 Рейтинг")
-    st.caption(f"Баллы: +{POINTS_PER_SCAN} за распознавание, +{POINTS_PER_CORRECT_ANSWER} за правильный ответ, "
+    st.caption(f"Баллы: +{POINTS_PER_SCAN} за распознавание, +{POINTS_PER_CORRECT_ANSWER} за правильный ответ "
+               f"(в {QUIZ_REWARDS_PER_DAY} викторинах в сутки), "
                f"+{POINTS_PER_FEEDBACK} за исправление ошибки модели.")
     t1, t2 = st.tabs(["Участники", "Школы"])
     with t1:
@@ -395,8 +410,8 @@ elif page == "Профиль" and user:
     if quizzes:
         st.subheader("Викторины")
         st.dataframe(pd.DataFrame(
-            [(f"{s}/{t}", "ИИ" if m == "ai" else "Готовые", d) for s, t, m, d in quizzes],
-            columns=["Результат", "Режим", "Дата"]), width="stretch")
+            [(f"{s}/{t}", "ИИ" if m == "ai" else "Готовые", pts, d) for s, t, m, pts, d in quizzes],
+            columns=["Результат", "Режим", "Баллы", "Дата"]), width="stretch")
 
 # =====================================================================
 # ВХОД / РЕГИСТРАЦИЯ

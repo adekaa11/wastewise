@@ -7,6 +7,8 @@ import sqlite3
 import threading
 from pathlib import Path
 
+from .content import POINTS_PER_CORRECT_ANSWER
+
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "app.db"
 
 # Streamlit обслуживает каждого посетителя в отдельном потоке, а соединение с базой
@@ -73,6 +75,11 @@ def init_db(conn):
     if "image_hash" not in columns:
         conn.execute("ALTER TABLE scans ADD COLUMN image_hash TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_scans_user_hash ON scans(user_id, image_hash)")
+    # Сколько баллов дала викторина — нужно для лимита «баллы за 3 викторины в сутки».
+    if "points" not in [row[1] for row in conn.execute("PRAGMA table_info(quiz_results)")]:
+        conn.execute("ALTER TABLE quiz_results ADD COLUMN points INTEGER DEFAULT 0")
+        # до лимита баллы начислялись всегда: score × POINTS_PER_CORRECT_ANSWER
+        conn.execute("UPDATE quiz_results SET points = score * ?", (POINTS_PER_CORRECT_ANSWER,))
     conn.commit()
 
 
@@ -174,12 +181,25 @@ def correct_scan(conn, scan_id, corrected):
 
 
 @_locked
-def save_quiz(conn, user_id, score, total, mode):
+def save_quiz(conn, user_id, score, total, mode, points=0):
     conn.execute(
-        "INSERT INTO quiz_results (user_id, score, total, mode) VALUES (?, ?, ?, ?)",
-        (user_id, score, total, mode),
+        "INSERT INTO quiz_results (user_id, score, total, mode, points) VALUES (?, ?, ?, ?, ?)",
+        (user_id, score, total, mode, points),
     )
     conn.commit()
+
+
+@_locked
+def rewarded_quizzes_last_day(conn, user_id):
+    """Сколько викторин за последние 24 часа принесли пользователю баллы.
+
+    Окно «24 часа назад от сейчас», а не календарный день: время в базе — UTC,
+    а у школьников Астаны UTC+5, и «полночь» сервера пришлась бы на 5 утра.
+    """
+    return conn.execute(
+        "SELECT COUNT(*) FROM quiz_results WHERE user_id = ? AND points > 0 AND date >= datetime('now', '-1 day')",
+        (user_id,),
+    ).fetchone()[0]
 
 
 @_locked
@@ -193,7 +213,7 @@ def user_scans(conn, user_id, limit=20):
 @_locked
 def user_quizzes(conn, user_id, limit=20):
     return conn.execute(
-        "SELECT score, total, mode, date FROM quiz_results WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+        "SELECT score, total, mode, points, date FROM quiz_results WHERE user_id = ? ORDER BY id DESC LIMIT ?",
         (user_id, limit),
     ).fetchall()
 
