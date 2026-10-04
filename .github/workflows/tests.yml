@@ -1,5 +1,7 @@
 # Автотесты при каждом push и pull request.
-# Нейросети в тестах «поддельные» (tests/conftest.py), поэтому torch не ставится — прогон ~1 мин.
+# Нейросети в тестах «поддельные» (tests/conftest.py), поэтому torch не ставится.
+# Хранилище и сквозные сценарии гоняются на SQLite (как локально) и на настоящем Postgres
+# (как на сайте с Supabase) — версии 15 и 17, на них работают проекты Supabase.
 name: tests
 
 on:
@@ -8,9 +10,24 @@ on:
 
 jobs:
   pytest:
-    name: pytest (модели — поддельные, без torch)
+    name: pytest (SQLite + Postgres ${{ matrix.postgres }}, модели — поддельные)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ["15", "17"]
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_PASSWORD: postgres  # одноразовый контейнер только для тестов
+          POSTGRES_DB: wastewise_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wastewise_test
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
