@@ -7,16 +7,8 @@ import threading
 
 import pytest
 
-from conftest import TEST_DATABASE_URL, fresh_postgres, needs_postgres
+from conftest import TEST_DATABASE_URL, needs_postgres
 from core import db, pg
-
-
-@pytest.fixture
-def pgconn():
-    conn = fresh_postgres()
-    db.init_db(conn)
-    yield conn
-    conn.close()
 
 
 @needs_postgres
