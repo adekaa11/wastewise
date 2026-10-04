@@ -8,3 +8,8 @@ __pycache__/
 venv/
 .venv/
 .pytest_cache/
+# данные и результаты обучения (train/) — большие, в git не нужны
+raw/
+datasets/
+models/
+runs/
