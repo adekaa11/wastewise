@@ -1,5 +1,6 @@
 """Нейросеть: загрузка модели YOLO и распознавание фото."""
 import io
+import threading
 from pathlib import Path
 
 from PIL import Image, ImageOps
@@ -15,6 +16,13 @@ NOT_WASTE = {0: "человек", 14: "птица", 15: "кошка", 16: "со�
 WASTE_LIKE = {39, 40, 41, 42, 43, 44, 45, 73}  # бутылка, бокал, стакан, вилка, нож, ложка, миска, книга/журнал
 
 DARK_THRESHOLD = 35  # средняя яркость 0..255; ниже — снимок слишком тёмный
+
+# Модели загружаются один раз и общие для всех посетителей сайта (st.cache_resource),
+# а Streamlit обслуживает каждого посетителя в своём потоке. Ultralytics предупреждает:
+# один объект YOLO нельзя вызывать из нескольких потоков одновременно — ответы могут
+# перепутаться или упасть с ошибкой. Поэтому фото обрабатываются нейросетями по очереди
+# (на сервере без видеокарты параллельно они всё равно не ускорились бы).
+_PREDICT_LOCK = threading.Lock()
 
 
 def load_model(path=MODEL_PATH):
@@ -37,7 +45,8 @@ def check_scene(detector, image: Image.Image):
     if _has_face(gray):
         return "Похоже, в кадре лицо человека, а не отход. Сфотографируйте сам предмет крупным планом."
 
-    result = detector.predict(image, conf=0.5, verbose=False)[0]
+    with _PREDICT_LOCK:
+        result = detector.predict(image, conf=0.5, verbose=False)[0]
     area = image.width * image.height
     found_waste_like = False
     blocker = None
@@ -72,7 +81,8 @@ def classify(model, image: Image.Image, top_k=3):
     а не ищет несколько предметов с рамками.
     """
     image = image.convert("RGB")
-    result = model.predict(image, verbose=False)[0]
+    with _PREDICT_LOCK:
+        result = model.predict(image, verbose=False)[0]
     probs = result.probs.data.tolist()
     names = result.names  # {0: 'glass', 1: 'metal', ...}
     ranked = sorted(((names[i], p) for i, p in enumerate(probs)), key=lambda x: x[1], reverse=True)
