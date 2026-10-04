@@ -3,7 +3,6 @@
 Запуск:  streamlit run app.py
 """
 import base64
-import io
 import os
 import hashlib
 import uuid
@@ -13,12 +12,11 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
-from PIL import Image, ImageOps
 
 from core import db
 from core.content import (LOW_CONFIDENCE, POINTS_PER_CORRECT_ANSWER, POINTS_PER_FEEDBACK,
                           POINTS_PER_SCAN, WASTE_INFO)
-from core.model import DETECTOR_PATH, check_scene, classify, load_model
+from core.model import DETECTOR_PATH, check_scene, classify, load_image, load_model
 from core.quiz import ai_available, generate_questions, random_questions
 from core import ui
 
@@ -47,6 +45,20 @@ def get_model():
 @st.cache_resource
 def get_detector():
     return load_model(DETECTOR_PATH)
+
+
+# Streamlit перезапускает весь скрипт при КАЖДОМ клике (выбор в списке, кнопка и т.п.).
+# Без кэша обе нейросети заново обрабатывали то же самое фото. Теперь результат
+# запоминается по file_key (md5 файла). Аргумент _image с подчёркиванием Streamlit
+# не хеширует — ключом служит только file_key.
+@st.cache_data(max_entries=300, show_spinner=False)
+def cached_check_scene(file_key: str, _image):
+    return check_scene(get_detector(), _image)
+
+
+@st.cache_data(max_entries=300, show_spinner=False)
+def cached_classify(file_key: str, _image):
+    return classify(get_model(), _image)
 
 
 @st.cache_resource
@@ -165,13 +177,16 @@ elif page == "Распознать отходы":
         shot = st.camera_input("Сделайте снимок") if st.toggle("Включить камеру") else None
     file = shot or uploaded
 
-    if file is not None:
-        raw = file.getvalue()
-        image = ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB")
+    raw = file.getvalue() if file is not None else None
+    image = load_image(raw) if raw else None
+    if raw and image is None:  # раньше битый файл ронял страницу с длинной ошибкой Python
+        st.error("Не удалось открыть файл как изображение. Попробуйте другое фото (JPG, PNG или WEBP).")
+
+    if image is not None:
         file_key = hashlib.md5(raw).hexdigest()
 
         with st.spinner("Нейросеть анализирует фото…"):
-            problem = check_scene(get_detector(), image)
+            problem = cached_check_scene(file_key, image)
         if problem and st.session_state.get("force_key") != file_key:
             c_img, c_msg = st.columns([1, 1.3])
             c_img.image(image, use_container_width=True)
@@ -185,7 +200,7 @@ elif page == "Распознать отходы":
             st.stop()
 
         with st.spinner("Нейросеть анализирует фото…"):
-            ranked = classify(get_model(), image)
+            ranked = cached_classify(file_key, image)
         best_cls, best_p = ranked[0]
         info = WASTE_INFO.get(best_cls, {})
 

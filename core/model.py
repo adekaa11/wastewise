@@ -1,7 +1,8 @@
 """Нейросеть: загрузка модели YOLO и распознавание фото."""
+import io
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
 MODEL_PATH = ASSETS / "best.pt"
@@ -76,3 +77,25 @@ def classify(model, image: Image.Image, top_k=3):
     names = result.names  # {0: 'glass', 1: 'metal', ...}
     ranked = sorted(((names[i], p) for i, p in enumerate(probs)), key=lambda x: x[1], reverse=True)
     return ranked[:top_k]
+
+
+MAX_SIDE = 1280  # px по длинной стороне: модели всё равно сжимают фото до 224–640 px
+
+
+def load_image(raw: bytes):
+    """Открыть загруженный файл как картинку. Возвращает None, если это не изображение.
+
+    Фото с телефона бывают 4000×3000 и больше: держать их в памяти и прогонять через
+    нейросети целиком бессмысленно — заранее уменьшаем до MAX_SIDE.
+    """
+    try:
+        image = Image.open(io.BytesIO(raw))
+        image.draft("RGB", (MAX_SIDE, MAX_SIDE))  # JPEG сразу читается в уменьшенном виде — быстрее
+        image = ImageOps.exif_transpose(image).convert("RGB")  # поворот по данным камеры
+    # Ловим любую ошибку: битый файл, «картинка-бомба» на сотни мегапикселей и т.п.
+    # Широко — потому что ultralytics подменяет Image.open и на нечитаемом файле
+    # бросает не только UnidentifiedImageError, но и ошибки своей доустановки pi-heif.
+    except Exception:
+        return None
+    image.thumbnail((MAX_SIDE, MAX_SIDE))
+    return image
