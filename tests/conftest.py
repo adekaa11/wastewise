@@ -72,21 +72,37 @@ def backdate(conn, table, row_id, hours):
     conn.commit()
 
 
+@pytest.fixture
+def fake_storage():
+    """Поддельный Supabase Storage (tests/fake_supabase.py) с приватным бакетом feedback."""
+    from fake_supabase import FakeStorage
+
+    fake = FakeStorage()
+    yield fake
+    fake.close()
+
+
 class _List(list):
     def tolist(self):
         return list(self)
 
 
-class FakeClassifier:
-    """Вместо YOLO-классификатора: всегда «пластик, 90%»."""
+OLD_CLASSES = {0: "plastic", 1: "glass", 2: "metal", 3: "paper"}
+NEW_CLASSES = dict(enumerate(["ewaste", "glass", "metal", "organic", "other", "paper", "plastic"]))  # порядок ultralytics
 
-    def __init__(self):
+
+class FakeClassifier:
+    """Вместо YOLO-классификатора. По умолчанию — как старая модель: 4 класса, всегда «пластик, 90%»."""
+
+    def __init__(self, names=None, probs=None):
         self.calls = 0
+        self.names = dict(names or OLD_CLASSES)
+        self.probs = list(probs or [0.90, 0.05, 0.03, 0.02])
 
     def predict(self, image, **kwargs):
         self.calls += 1
-        probs = SimpleNamespace(data=_List([0.90, 0.05, 0.03, 0.02]))
-        return [SimpleNamespace(probs=probs, names={0: "plastic", 1: "glass", 2: "metal", 3: "paper"})]
+        probs = SimpleNamespace(data=_List(self.probs))
+        return [SimpleNamespace(probs=probs, names=self.names)]
 
 
 class FakeDetector:
@@ -126,6 +142,7 @@ class App:
             self.at.secrets["DATABASE_URL"] = database_url
         for key, value in (secrets or {}).items():
             self.at.secrets[key] = value
+        self.feedback_dir = Path(path).parent / "data" / "feedback"
         self.db_path, self.database_url = db_path, database_url
         self.classifier, self.detector = classifier, detector
         self._uploads = uploads
@@ -152,8 +169,7 @@ class App:
         for widget, value in zip(self.at.text_input, [username, password, "Алиса", "Школа 1"]):
             widget.input(value)
         self.button("Зарегистрироваться").click()
-        self.run()
-        self.login(username, password)
+        self.run()  # после регистрации сайт сразу входит в аккаунт
 
     def login(self, username="alice", password="secret1"):
         self.go("Вход")
@@ -186,7 +202,8 @@ class App:
 
 def start_app(tmp_path, monkeypatch, database_url=None, secrets=None):
     """Запустить приложение в отдельной папке: своя data/feedback, модели — поддельные."""
-    monkeypatch.delenv("DATABASE_URL", raising=False)  # чтобы тесты не попали в настоящую базу
+    for key in ("DATABASE_URL", "SUPABASE_URL", "SUPABASE_SERVICE_KEY"):
+        monkeypatch.delenv(key, raising=False)  # чтобы тесты не попали в настоящую базу и хранилище
     shutil.copy(ROOT / "app.py", tmp_path / "app.py")
     (tmp_path / "assets").mkdir()
     for name in ("Logo_waste_seg.jpg", "123.jpg"):

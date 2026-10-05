@@ -118,6 +118,9 @@ def init_db(conn):
     if "image_hash" not in columns:
         conn.execute("ALTER TABLE scans ADD COLUMN image_hash TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_scans_user_hash ON scans(user_id, image_hash)")
+    # Где лежит фото «Модель ошиблась» (папка data/feedback или Supabase Storage) — наш датасет.
+    if "feedback_path" not in [row[1] for row in conn.execute("PRAGMA table_info(scans)")]:
+        conn.execute("ALTER TABLE scans ADD COLUMN feedback_path TEXT")
     # Сколько баллов дала викторина — нужно для лимита «баллы за 3 викторины в сутки».
     if "points" not in [row[1] for row in conn.execute("PRAGMA table_info(quiz_results)")]:
         conn.execute("ALTER TABLE quiz_results ADD COLUMN points INTEGER DEFAULT 0")
@@ -238,8 +241,9 @@ def find_scan(conn, user_id, image_hash):
 
 
 @_locked
-def correct_scan(conn, scan_id, corrected):
-    conn.execute("UPDATE scans SET corrected = ? WHERE id = ?", (corrected, scan_id))
+def correct_scan(conn, scan_id, corrected, feedback_path=None):
+    """Пользователь указал правильный тип; feedback_path — где сохранено фото для дообучения."""
+    conn.execute("UPDATE scans SET corrected = ?, feedback_path = ? WHERE id = ?", (corrected, feedback_path, scan_id))
     conn.commit()
 
 
@@ -282,9 +286,39 @@ def user_quizzes(conn, user_id, limit=20):
 
 
 @_locked
-def leaderboard_users(conn, limit=20):
+def leaderboard_users(conn, limit=20, with_ids=False):
+    """Лучшие участники: (имя, школа, баллы), с with_ids=True — ещё и id (чтобы отметить «это вы»)."""
+    rows = conn.execute(
+        "SELECT name, school, points, id FROM users ORDER BY points DESC, id ASC LIMIT ?", (limit,)
+    ).fetchall()
+    return [tuple(r) if with_ids else tuple(r[:3]) for r in rows]
+
+
+@_locked
+def user_place(conn, user_id):
+    """Место пользователя в общем рейтинге (1 — первое). При равных баллах выше тот, кто раньше пришёл."""
+    row = conn.execute(
+        """SELECT COUNT(*) + 1 FROM users u, users me
+           WHERE me.id = ? AND (u.points > me.points OR (u.points = me.points AND u.id < me.id))""",
+        (user_id,),
+    ).fetchone()
+    return row[0] if row else None
+
+
+@_locked
+def user_totals(conn, user_id):
+    """Сколько всего у пользователя распознаваний и викторин (а не только последних 20)."""
+    scans = conn.execute("SELECT COUNT(*) FROM scans WHERE user_id = ?", (user_id,)).fetchone()[0]
+    quizzes = conn.execute("SELECT COUNT(*) FROM quiz_results WHERE user_id = ?", (user_id,)).fetchone()[0]
+    return scans, quizzes
+
+
+@_locked
+def user_class_counts(conn, user_id):
+    """Что пользователь распознавал: [(класс, сколько раз)] — с учётом его исправлений."""
     return conn.execute(
-        "SELECT name, school, points FROM users ORDER BY points DESC, id ASC LIMIT ?", (limit,)
+        "SELECT COALESCE(corrected, predicted) AS c, COUNT(*) FROM scans WHERE user_id = ? GROUP BY c",
+        (user_id,),
     ).fetchall()
 
 

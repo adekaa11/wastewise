@@ -104,3 +104,19 @@ def test_cascade_delete_of_user_history(store):
     store.execute("DELETE FROM users WHERE id = ?", (uid,))
     store.commit()
     assert db.global_stats(store)["scans"] == 0
+
+
+def test_user_place_totals_and_class_counts(store):
+    """Профиль: место в рейтинге, сколько всего фото и викторин, что пользователь сортировал."""
+    assert db.register_user(store, "alice", "secret1", "Alice", "")[0]
+    assert db.register_user(store, "bobby", "secret1", "Bob", "")[0]
+    alice, bob = db.authenticate(store, "alice", "secret1"), db.authenticate(store, "bobby", "secret1")
+    db.add_points(store, bob, 30)
+    db.add_points(store, alice, 30)  # те же баллы — выше тот, кто зарегистрировался раньше
+    assert db.user_place(store, alice) == 1 and db.user_place(store, bob) == 2
+    for i in range(25):  # больше, чем показывает история (20)
+        db.save_scan(store, alice, "plastic" if i % 5 else "cardboard", 0.9, f"h{i}")
+    db.save_quiz(store, alice, 5, 5, "bank", 25)
+    assert db.user_totals(store, alice) == (25, 1)
+    assert dict(db.user_class_counts(store, alice)) == {"plastic": 20, "cardboard": 5}
+    assert db.leaderboard_users(store, with_ids=True)[0] == ("Alice", "", 30, alice)

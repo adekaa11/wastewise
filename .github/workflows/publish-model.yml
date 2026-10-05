@@ -1,0 +1,43 @@
+# Забрать результат обучения (артефакт «model» запуска train-model) в ветку репозитория,
+# чтобы его можно было скачать через git: claude/trained-model-<номер запуска>.
+#
+# Запуск: push в ветку claude/publish-model-<номер запуска train-model>.
+# Новые запуски train-model публикуют результат сами — этот workflow нужен для старых.
+name: publish-model
+
+on:
+  push:
+    branches: ["claude/publish-model-**"]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Номер запуска из имени ветки
+        run: echo "RUN_ID=${GITHUB_REF_NAME##*-}" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: model
+          run-id: ${{ env.RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: trained
+
+      - name: Сводка
+        run: python .github/model_summary.py trained
+
+      - name: Сохранить в ветку claude/trained-model-<номер>
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "claude/trained-model-$RUN_ID"
+          git add -f trained
+          git commit -q -m "Результат обучения: запуск train-model $RUN_ID"
+          git push -q origin "claude/trained-model-$RUN_ID"

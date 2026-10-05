@@ -1,0 +1,112 @@
+# Обучение модели на 7 типов отходов — на бесплатном сервере GitHub (без видеокарты, ~3–5 часов).
+# То же, что ноутбук train/wastewise_colab.ipynb, только без ручных шагов: скачать открытые датасеты,
+# собрать датасет, дообучить текущую модель сайта, сравнить старую и новую на одном тестовом наборе.
+#
+# Запуск: Actions → train-model → Run workflow (или push в ветку claude/train-model-…).
+# Результат — ветка claude/trained-model-<номер запуска> (папка trained/) и артефакт «model» внизу страницы
+# запуска: new_best.pt, compare.json, отчёт о датасете. Краткая сводка — в аннотациях запуска.
+# На сайт модель ставится вручную после проверки compare.json (docs/TRAINING.md).
+name: train-model
+
+on:
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "Сколько часов учиться (задача на GitHub живёт максимум 6 часов)"
+        default: "3.5"
+      imgsz:
+        description: "Размер фото для обучения, px"
+        default: "224"
+  push:
+    branches: ["claude/train-model-**"]
+
+permissions:
+  contents: write  # опубликовать результат в ветку claude/trained-model-<номер запуска>
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      HOURS: ${{ inputs.hours || '3.5' }}
+      IMGSZ: ${{ inputs.imgsz || '224' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Установить torch (CPU) и ultralytics
+        run: |
+          pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install -q "ultralytics>=8.3" "opencv-python-headless>=4.6,<5" pillow requests
+          python -c "import torch; print('torch', torch.__version__, 'потоков:', torch.get_num_threads())"
+
+      - name: Скачать TrashNet и RealWaste
+        run: |
+          mkdir -p raw/trashnet
+          wget -q -O /tmp/trashnet.zip https://raw.githubusercontent.com/garythung/trashnet/master/data/dataset-resized.zip
+          unzip -q -o /tmp/trashnet.zip -d raw/trashnet
+          git clone -q --depth 1 https://github.com/sam-single/realwaste raw/realwaste
+          du -sh raw/*
+
+      - name: Скачать TACO (мусор «в природе»)
+        continue-on-error: true  # фото с Flickr: если часть не скачалась — учимся на остальном
+        run: python -m train.taco --out raw/taco
+
+      - name: Скачать Open Images — электроника
+        continue-on-error: true
+        run: python -m train.openimages --out raw/openimages --per-class 200
+
+      - name: Собрать датасет
+        run: |
+          python -m train.dataset --raw raw --out datasets/wastewise --size 320 --max-per-class 1500 | tee dataset_report.md
+          rm -rf raw  # освободить диск
+
+      - name: Обучить (дообучение текущей модели сайта)
+        run: |
+          python -m train.train --data datasets/wastewise --base assets/best.pt \
+            --imgsz "$IMGSZ" --epochs 30 --batch 32 --patience 6 --device cpu --workers 4 \
+            --hours "$HOURS" --out models/new_best.pt
+
+      - name: Сравнить старую и новую модель
+        id: compare
+        run: |
+          set +e
+          python -m train.evaluate --test datasets/wastewise/test --old assets/best.pt \
+            --new models/new_best.pt --json models/compare.json | tee compare_report.md
+          echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          cat compare_report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Сводка в аннотациях
+        if: always()
+        run: python .github/model_summary.py .
+
+      - name: Опубликовать результат в ветку
+        if: always()
+        run: |
+          mkdir -p trained
+          cp -r models dataset_report.md compare_report.md trained/ 2>/dev/null || true
+          cp datasets/wastewise/summary.json datasets/wastewise/ATTRIBUTION.csv trained/ 2>/dev/null || true
+          cp runs/classify/wastewise7/results.csv trained/ 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "claude/trained-model-$GITHUB_RUN_ID"
+          git add -f trained
+          git commit -q -m "Результат обучения: запуск train-model $GITHUB_RUN_ID"
+          git push -q origin "claude/trained-model-$GITHUB_RUN_ID"
+
+      - name: Сохранить результат
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: model
+          path: |
+            models/
+            dataset_report.md
+            compare_report.md
+            datasets/wastewise/summary.json
+            datasets/wastewise/ATTRIBUTION.csv
+            runs/classify/wastewise7/results.csv
+          retention-days: 30

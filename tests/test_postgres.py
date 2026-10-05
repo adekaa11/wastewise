@@ -7,7 +7,7 @@ import threading
 
 import pytest
 
-from conftest import TEST_DATABASE_URL, needs_postgres
+from conftest import TEST_DATABASE_URL, fresh_postgres, needs_postgres
 from core import db, pg
 
 
@@ -113,3 +113,20 @@ def test_connection_hints(url, words):
 
 def test_no_hint_for_ordinary_postgres():
     assert pg.connection_hint("postgresql://postgres@127.0.0.1:5432/test") is None
+
+
+@needs_postgres
+def test_migration_creates_private_feedback_bucket_in_supabase():
+    """В Supabase есть таблица storage.buckets — миграция создаёт там приватный бакет feedback."""
+    conn = fresh_postgres()
+    try:
+        conn.execute("DROP SCHEMA IF EXISTS storage CASCADE")
+        conn.execute("CREATE SCHEMA storage")  # как в Supabase (упрощённо)
+        conn.execute("CREATE TABLE storage.buckets (id TEXT PRIMARY KEY, name TEXT NOT NULL, public BOOLEAN DEFAULT false)")
+        db.init_db(conn)
+        assert conn.execute("SELECT id, public FROM storage.buckets").fetchall() == [("feedback", False)]
+        assert "feedback_path" in [r[0] for r in conn.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'scans'")]
+    finally:
+        conn.execute("DROP SCHEMA IF EXISTS storage CASCADE")
+        conn.close()
