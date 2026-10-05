@@ -1,0 +1,152 @@
+{
+  "classes": {
+    "glass": {
+      "old": [
+        58,
+        106
+      ],
+      "new": [
+        87,
+        106
+      ],
+      "photos": 106
+    },
+    "metal": {
+      "old": [
+        105,
+        148
+      ],
+      "new": [
+        120,
+        148
+      ],
+      "photos": 148
+    },
+    "paper": {
+      "old": [
+        197,
+        215
+      ],
+      "new": [
+        196,
+        215
+      ],
+      "photos": 215
+    },
+    "plastic": {
+      "old": [
+        86,
+        237
+      ],
+      "new": [
+        180,
+        237
+      ],
+      "photos": 237
+    },
+    "ewaste": {
+      "old": null,
+      "new": [
+        195,
+        200
+      ],
+      "photos": 200
+    },
+    "organic": {
+      "old": null,
+      "new": [
+        67,
+        69
+      ],
+      "photos": 69
+    },
+    "other": {
+      "old": null,
+      "new": [
+        93,
+        119
+      ],
+      "photos": 119
+    }
+  },
+  "old_classes_total": {
+    "old": [
+      446,
+      706
+    ],
+    "new": [
+      583,
+      706
+    ]
+  },
+  "all_classes_total_new": [
+    938,
+    1094
+  ],
+  "by_source": {
+    "old": {
+      "realwaste": [
+        158,
+        284
+      ],
+      "taco": [
+        50,
+        180
+      ],
+      "trashnet": [
+        238,
+        242
+      ]
+    },
+    "new": {
+      "realwaste": [
+        260,
+        284
+      ],
+      "taco": [
+        109,
+        180
+      ],
+      "trashnet": [
+        214,
+        242
+      ]
+    }
+  },
+  "confusions_new": [
+    [
+      "plastic",
+      "other",
+      26
+    ],
+    [
+      "metal",
+      "plastic",
+      16
+    ],
+    [
+      "plastic",
+      "metal",
+      11
+    ],
+    [
+      "plastic",
+      "paper",
+      11
+    ],
+    [
+      "glass",
+      "plastic",
+      10
+    ]
+  ],
+  "guard": [
+    "glass",
+    "metal",
+    "paper",
+    "plastic"
+  ],
+  "failures": [
+    "Бумага и картон: было 91.6%, стало 91.2% (-1 из 215 фото)"
+  ]
+}
