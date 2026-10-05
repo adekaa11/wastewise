@@ -3,7 +3,8 @@
 # собрать датасет, дообучить текущую модель сайта, сравнить старую и новую на одном тестовом наборе.
 #
 # Запуск: Actions → train-model → Run workflow (или push в ветку claude/train-model-…).
-# Результат — артефакт «model» внизу страницы запуска: new_best.pt, compare.json, отчёт о датасете.
+# Результат — ветка claude/trained-model-<номер запуска> (папка trained/) и артефакт «model» внизу страницы
+# запуска: new_best.pt, compare.json, отчёт о датасете. Краткая сводка — в аннотациях запуска.
 # На сайт модель ставится вручную после проверки compare.json (docs/TRAINING.md).
 name: train-model
 
@@ -20,7 +21,7 @@ on:
     branches: ["claude/train-model-**"]
 
 permissions:
-  contents: read
+  contents: write  # опубликовать результат в ветку claude/trained-model-<номер запуска>
 
 jobs:
   train:
@@ -77,6 +78,24 @@ jobs:
             --new models/new_best.pt --json models/compare.json | tee compare_report.md
           echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
           cat compare_report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Сводка в аннотациях
+        if: always()
+        run: python .github/model_summary.py .
+
+      - name: Опубликовать результат в ветку
+        if: always()
+        run: |
+          mkdir -p trained
+          cp -r models dataset_report.md compare_report.md trained/ 2>/dev/null || true
+          cp datasets/wastewise/summary.json datasets/wastewise/ATTRIBUTION.csv trained/ 2>/dev/null || true
+          cp runs/classify/wastewise7/results.csv trained/ 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "claude/trained-model-$GITHUB_RUN_ID"
+          git add -f trained
+          git commit -q -m "Результат обучения: запуск train-model $GITHUB_RUN_ID"
+          git push -q origin "claude/trained-model-$GITHUB_RUN_ID"
 
       - name: Сохранить результат
         if: always()
