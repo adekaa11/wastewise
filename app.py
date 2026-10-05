@@ -3,6 +3,7 @@
 Запуск:  streamlit run app.py
 """
 import base64
+import logging
 import os
 import hashlib
 import uuid
@@ -17,10 +18,19 @@ from core import db
 from core.content import (LOW_CONFIDENCE, POINTS_PER_CORRECT_ANSWER, POINTS_PER_FEEDBACK,
                           POINTS_PER_SCAN, QUIZ_REWARDS_PER_DAY, WASTE_INFO)
 from core.model import DETECTOR_PATH, check_scene, classify, load_image, load_model
+from core.pg import connection_hint
 from core.quiz import ai_available, generate_questions, random_questions
 from core import ui
 
 ROOT = Path(__file__).resolve().parent
+
+# Свой логгер: Streamlit настраивает только собственный, и без этого строки уровня INFO в логах не видны.
+log = logging.getLogger("wastewise")
+if not log.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s wastewise: %(message)s"))
+    log.addHandler(_handler)
+    log.setLevel(logging.INFO)
 ASSETS = ROOT / "assets"
 FEEDBACK_DIR = ROOT / "data" / "feedback"
 
@@ -32,6 +42,17 @@ try:  # на Streamlit Cloud ключ хранится в «Secrets», а не �
             os.environ[key] = st.secrets[key]
 except Exception:
     pass
+
+
+def setting(key):
+    """Настройка из .env / переменной окружения (локально) или из st.secrets (Streamlit Cloud)."""
+    if os.getenv(key):
+        return os.getenv(key)
+    try:
+        return st.secrets.get(key)
+    except Exception:  # файла secrets.toml нет — локально это нормально
+        return None
+
 
 st.set_page_config(page_title="WasteWise — сортировка отходов", page_icon="♻️", layout="wide")
 ui.inject()
@@ -63,12 +84,48 @@ def cached_classify(file_key: str, _image):
 
 @st.cache_resource
 def get_db():
-    conn = db.get_conn()
+    # DATABASE_URL (Streamlit Cloud → Settings → Secrets) → Supabase: аккаунты и баллы переживают
+    # перезапуск сайта. Без него — локальный файл data/app.db, как раньше. Инструкция: docs/SUPABASE.md
+    url = setting("DATABASE_URL")
+    conn = db.get_conn(url)
     db.init_db(conn)
+    # Один раз при запуске: какая база на самом деле используется. Без пароля и адреса — логи видят не только вы.
+    log.info("База данных: %s", db.describe(conn))
+    if not url and (misplaced := misplaced_database_url()):
+        log.warning("В Secrets есть строка postgresql://… под именем «%s», а сайт ищет DATABASE_URL "
+                    "на верхнем уровне (не внутри раздела [...]). Переименуйте ключ.", misplaced)
     return conn
 
 
-conn = get_db()
+def misplaced_database_url():
+    """Частая ошибка: строка подключения лежит в Secrets под другим именем или внутри раздела [...].
+
+    Возвращает имя ключа (например, «connections.supabase.url») — но не саму строку с паролем.
+    """
+    try:
+        found = list(_postgres_keys(st.secrets.to_dict()))
+    except Exception:
+        return None
+    return found[0] if found else None
+
+
+def _postgres_keys(secrets, prefix=""):
+    for key, value in secrets.items():
+        if isinstance(value, dict):
+            yield from _postgres_keys(value, f"{prefix}{key}.")
+        elif isinstance(value, str) and value.strip().startswith(("postgres://", "postgresql://")):
+            yield f"{prefix}{key}"
+
+
+try:
+    conn = get_db()
+except Exception:  # база недоступна: Supabase на паузе, неверный пароль, нет сети
+    log.exception("Не удалось подключиться к базе данных")  # подробности — в логах
+    st.error("Не удалось подключиться к базе данных. Попробуйте обновить страницу через минуту.")
+    hint = connection_hint(setting("DATABASE_URL") or "")
+    if hint:  # подсказка без секретов: пароль и адрес не показываются
+        st.caption(hint)
+    st.stop()
 
 
 def b64(path):

@@ -5,6 +5,7 @@
 Запуск:  pip install -r requirements.txt pytest  →  pytest
 """
 import io
+import os
 import shutil
 import sqlite3
 import sys
@@ -20,6 +21,55 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from core import db, model  # noqa: E402
+
+
+# Тесты хранилища идут на SQLite всегда, а на Postgres — если задан TEST_DATABASE_URL
+# (в CI это контейнер postgres, см. .github/workflows/tests.yml). База в TEST_DATABASE_URL
+# очищается перед каждым тестом — не указывайте там базу сайта!
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
+BACKENDS = ["sqlite"] + (["postgres"] if TEST_DATABASE_URL else [])
+needs_postgres = pytest.mark.skipif(not TEST_DATABASE_URL, reason="нужен TEST_DATABASE_URL с тестовым Postgres")
+
+
+def fresh_postgres():
+    """Соединение с пустой тестовой базой Postgres: все таблицы WasteWise удалены, миграции применятся заново."""
+    conn = db.get_conn(TEST_DATABASE_URL)
+    conn.execute("DROP TABLE IF EXISTS quiz_results, scans, users, schema_migrations CASCADE")
+    return conn
+
+
+@pytest.fixture
+def pgconn():
+    """Только Postgres: пустая тестовая база с применёнными миграциями."""
+    if not TEST_DATABASE_URL:
+        pytest.skip("нужен TEST_DATABASE_URL с тестовым Postgres")
+    conn = fresh_postgres()
+    db.init_db(conn)
+    yield conn
+    conn.close()
+
+
+@pytest.fixture(params=BACKENDS)
+def store(request, tmp_path, monkeypatch):
+    """Пустая база с таблицами — та же, с которой работает приложение (SQLite или Postgres)."""
+    if request.param == "postgres":
+        conn = fresh_postgres()
+    else:
+        monkeypatch.setattr(db, "DB_PATH", tmp_path / "app.db")
+        conn = db.get_conn()
+    db.init_db(conn)
+    yield conn
+    conn.close()
+
+
+def backdate(conn, table, row_id, hours):
+    """Сдвинуть дату записи в прошлое (для проверки окна «24 часа»)."""
+    if getattr(conn, "dialect", "sqlite") == "postgres":
+        past = f"timezone('utc', now()) - interval '{int(hours)} hours'"
+    else:
+        past = f"datetime('now', '-{int(hours)} hours')"
+    conn.execute(f"UPDATE {table} SET date = {past} WHERE id = ?", (row_id,))
+    conn.commit()
 
 
 class _List(list):
@@ -70,9 +120,13 @@ class _Upload:
 class App:
     """Обёртка над AppTest: страница, загрузка фото, вход, баллы из базы."""
 
-    def __init__(self, path, db_path, classifier, detector, uploads):
+    def __init__(self, path, db_path, classifier, detector, uploads, database_url=None, secrets=None):
         self.at = AppTest.from_file(str(path), default_timeout=60)
-        self.db_path = db_path
+        if database_url:  # как на Streamlit Cloud: строка подключения — в Secrets
+            self.at.secrets["DATABASE_URL"] = database_url
+        for key, value in (secrets or {}).items():
+            self.at.secrets[key] = value
+        self.db_path, self.database_url = db_path, database_url
         self.classifier, self.detector = classifier, detector
         self._uploads = uploads
         self.run()
@@ -112,21 +166,27 @@ class App:
         next(b for b in self.at.sidebar.button if b.label == "Выйти").click()
         self.run()
 
+    def query(self, sql, params=()):
+        """Прочитать из базы приложения напрямую (SQLite-файл или тестовый Postgres)."""
+        conn = db.get_conn(self.database_url) if self.database_url else sqlite3.connect(self.db_path)
+        try:
+            return conn.execute(sql, params).fetchall()
+        finally:
+            conn.close()
+
     def points(self, username="alice"):
-        with sqlite3.connect(self.db_path) as c:
-            return c.execute("SELECT points FROM users WHERE username = ?", (username,)).fetchone()[0]
+        return self.query("SELECT points FROM users WHERE username = ?", (username,))[0][0]
 
     def scans(self):
-        with sqlite3.connect(self.db_path) as c:
-            return c.execute("SELECT user_id, predicted, corrected, image_hash FROM scans ORDER BY id").fetchall()
+        return self.query("SELECT user_id, predicted, corrected, image_hash FROM scans ORDER BY id")
 
     def captions(self):
         return [c.value for c in self.at.caption]
 
 
-@pytest.fixture
-def app(tmp_path, monkeypatch):
-    """Приложение в отдельной папке: своя база и своя data/feedback, модели — поддельные."""
+def start_app(tmp_path, monkeypatch, database_url=None, secrets=None):
+    """Запустить приложение в отдельной папке: своя data/feedback, модели — поддельные."""
+    monkeypatch.delenv("DATABASE_URL", raising=False)  # чтобы тесты не попали в настоящую базу
     shutil.copy(ROOT / "app.py", tmp_path / "app.py")
     (tmp_path / "assets").mkdir()
     for name in ("Logo_waste_seg.jpg", "123.jpg"):
@@ -141,6 +201,16 @@ def app(tmp_path, monkeypatch):
     monkeypatch.setattr(st, "file_uploader", lambda *a, **k: uploads["file"])
     st.cache_data.clear()
     st.cache_resource.clear()
-    yield App(tmp_path / "app.py", db.DB_PATH, classifier, detector, uploads)
+    return App(tmp_path / "app.py", db.DB_PATH, classifier, detector, uploads, database_url, secrets)
+
+
+@pytest.fixture(params=BACKENDS)
+def app(request, tmp_path, monkeypatch):
+    """Приложение на SQLite (как локально) и, если задан TEST_DATABASE_URL, на Postgres (как на сайте)."""
+    database_url = None
+    if request.param == "postgres":
+        fresh_postgres().close()  # пустая база: таблицы создаст само приложение миграциями
+        database_url = TEST_DATABASE_URL
+    yield start_app(tmp_path, monkeypatch, database_url)
     st.cache_data.clear()
     st.cache_resource.clear()
