@@ -25,7 +25,7 @@ DEFAULTS = {
 
 def train(data, base="assets/best.pt", epochs=DEFAULTS["epochs"], imgsz=DEFAULTS["imgsz"], batch=DEFAULTS["batch"],
           patience=DEFAULTS["patience"], name=DEFAULTS["name"], device=None, workers=8, fraction=1.0,
-          out=DEFAULTS["out"]):
+          out=DEFAULTS["out"], hours=None):
     """Обучить, скопировать лучшую модель в out и вернуть этот путь."""
     from ultralytics import YOLO
 
@@ -35,6 +35,9 @@ def train(data, base="assets/best.pt", epochs=DEFAULTS["epochs"], imgsz=DEFAULTS
         name=name, exist_ok=True,  # папку запуска ultralytics выбирает сам (runs/…/<name>)
         seed=0, deterministic=True,  # повторный запуск на тех же данных даёт тот же результат
         workers=workers, device=device, fraction=fraction, plots=True,
+        # hours: потолок по времени (например, на бесплатном сервере GitHub Actions задача живёт 6 часов).
+        # ultralytics сам подстроит число эпох и всё равно сохранит лучшую модель.
+        **({"time": hours} if hours else {}),
         # Аугментации ultralytics по умолчанию (случайная обрезка, поворот цвета, RandAugment, стирание
         # кусков) как раз учат модель узнавать предмет не только на белом фоне.
     )
@@ -55,10 +58,11 @@ def main(argv=None):
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--fraction", type=float, default=1.0, help="доля train для быстрой пробы (0.1 — 10%%)")
     parser.add_argument("--out", default=DEFAULTS["out"], help="куда положить лучшую модель")
+    parser.add_argument("--hours", type=float, default=None, help="не дольше этого числа часов (по умолчанию — без лимита)")
     args = parser.parse_args(argv)
 
     best = train(args.data, args.base, args.epochs, args.imgsz, args.batch, args.patience, args.name,
-                 args.device, args.workers, args.fraction, args.out)
+                 args.device, args.workers, args.fraction, args.out, args.hours)
     print(f"\nГотово: {best}")
     print(f"Дальше: python -m train.evaluate --test {Path(args.data) / 'test'} --old {args.base} --new {best}")
 
