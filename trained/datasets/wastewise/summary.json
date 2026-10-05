@@ -1,0 +1,53 @@
+{
+  "splits": {
+    "train": {
+      "glass": 819,
+      "metal": 1187,
+      "paper": 1500,
+      "plastic": 1500,
+      "ewaste": 1500,
+      "organic": 677,
+      "other": 1052
+    },
+    "val": {
+      "glass": 100,
+      "metal": 146,
+      "paper": 203,
+      "plastic": 255,
+      "ewaste": 201,
+      "organic": 105,
+      "other": 130
+    },
+    "test": {
+      "glass": 106,
+      "metal": 148,
+      "paper": 215,
+      "plastic": 237,
+      "ewaste": 200,
+      "organic": 69,
+      "other": 119
+    }
+  },
+  "by_source": {
+    "test/openimages": 200,
+    "test/realwaste": 420,
+    "test/taco": 221,
+    "test/trashnet": 253,
+    "train/openimages": 1498,
+    "train/realwaste": 3533,
+    "train/taco": 1442,
+    "train/trashnet": 1762,
+    "val/openimages": 201,
+    "val/realwaste": 485,
+    "val/taco": 190,
+    "val/trashnet": 264
+  },
+  "duplicates_removed": 51,
+  "conflicting_labels": 3,
+  "skipped": {
+    "taco: не берём «aerosol»": 8,
+    "taco: не берём «other plastic wrapper»": 192,
+    "taco: не берём «squeezable tube»": 4,
+    "taco: не берём «unlabeled litter»": 151
+  }
+}
