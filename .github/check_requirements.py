@@ -15,7 +15,10 @@ import re
 import sys
 
 NOT_CUDA = {"nvidia-ml-py"}  # не CUDA-библиотека, а Python-обёртка для опроса видеокарт (нужна ultralytics)
-WATCH = ("requests", "urllib3", "certifi")  # uv берёт их из индекса PyTorch, где лежат старые версии
+WATCH = ("requests", "urllib3", "certifi")  # раньше uv брал их из индекса PyTorch, где лежат старые версии
+# Не старше этих версий: в более старых — известные уязвимости (requests CVE-2024-47081,
+# urllib3 CVE-2024-37891, certifi CVE-2024-39689).
+MIN_VERSIONS = {"requests": (2, 32, 4), "urllib3": (2, 2, 2), "certifi": (2024, 7, 4)}
 
 
 def resolved(path):
@@ -40,7 +43,20 @@ def problems(pkgs):
     opencv = pkgs.get("opencv-python")
     if not opencv or int(opencv.split(".")[0]) >= 5:
         found.append(f"opencv-python=={opencv}: нужен < 5")
+    for name, minimum in MIN_VERSIONS.items():
+        version = pkgs.get(name)
+        if version and _release(version) < minimum:
+            found.append(f"{name}=={version}: старая версия с известными уязвимостями (нужна ≥ {'.'.join(map(str, minimum))})")
     return found
+
+
+def _release(version):
+    """«2.28.1» → (2, 28, 1); суффиксы вроде «.post0» и «+cpu» отбрасываются."""
+    parts = []
+    for piece in re.split(r"[.+]", version)[:3]:
+        digits = re.match(r"\d+", piece)
+        parts.append(int(digits.group()) if digits else 0)
+    return tuple(parts + [0] * (3 - len(parts)))
 
 
 if __name__ == "__main__":

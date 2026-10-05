@@ -1,7 +1,12 @@
 # torch только для процессора (без видеокарты) — в ~5 раз легче, сервер Streamlit Cloud без GPU.
 # Отсюда pip и uv берут CPU-сборки (версия вида 2.x.x+cpu) вместо CUDA-сборки с PyPI (+2–3 ГБ nvidia-*).
+# Именно --find-links на страницы torch и torchvision, а не --extra-index-url на весь индекс PyTorch:
+# uv (им ставит пакеты Streamlit Cloud) берёт пакет из первого индекса, где он есть, а в индексе PyTorch
+# лежат старые requests 2.28, urllib3 1.26 и certifi 2022 с известными уязвимостями. По ссылкам ниже —
+# только torch и torchvision, всё остальное приходит с PyPI свежим.
 # Проверяется в CI без установки: .github/workflows/requirements.yml.
---extra-index-url https://download.pytorch.org/whl/cpu
+--find-links https://download.pytorch.org/whl/cpu/torch/
+--find-links https://download.pytorch.org/whl/cpu/torchvision/
 torch
 torchvision
 ultralytics>=8.3
