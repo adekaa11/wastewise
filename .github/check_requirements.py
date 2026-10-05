@@ -11,6 +11,7 @@
     python .github/check_requirements.py pip.json uv.txt
 """
 import json
+import os
 import re
 import sys
 
@@ -65,8 +66,12 @@ if __name__ == "__main__":
     for path in sys.argv[1:]:
         pkgs = results[path] = resolved(path)
         errors = problems(pkgs) if pkgs else ["пакеты не найдены — разрешение зависимостей не удалось?"]
-        print(f"{path}: torch=={pkgs.get('torch')}, torchvision=={pkgs.get('torchvision')}, "
-              f"opencv-python=={pkgs.get('opencv-python')}, всего пакетов: {len(pkgs)}")
+        line = (f"{path}: torch=={pkgs.get('torch')}, torchvision=={pkgs.get('torchvision')}, "
+                f"opencv-python=={pkgs.get('opencv-python')}, "
+                + ", ".join(f"{n}=={pkgs.get(n)}" for n in WATCH) + f", всего пакетов: {len(pkgs)}")
+        print(line)
+        if os.getenv("GITHUB_ACTIONS"):  # видно на странице запуска (Annotations), не открывая логи
+            print(f"::notice title={os.path.basename(path)}::{line}")
         for e in errors:
             print(f"  ❌ {e}")
         failed |= bool(errors)
