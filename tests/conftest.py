@@ -169,8 +169,7 @@ class App:
         for widget, value in zip(self.at.text_input, [username, password, "Алиса", "Школа 1"]):
             widget.input(value)
         self.button("Зарегистрироваться").click()
-        self.run()
-        self.login(username, password)
+        self.run()  # после регистрации сайт сразу входит в аккаунт
 
     def login(self, username="alice", password="secret1"):
         self.go("Вход")

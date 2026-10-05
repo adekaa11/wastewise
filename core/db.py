@@ -286,9 +286,39 @@ def user_quizzes(conn, user_id, limit=20):
 
 
 @_locked
-def leaderboard_users(conn, limit=20):
+def leaderboard_users(conn, limit=20, with_ids=False):
+    """Лучшие участники: (имя, школа, баллы), с with_ids=True — ещё и id (чтобы отметить «это вы»)."""
+    rows = conn.execute(
+        "SELECT name, school, points, id FROM users ORDER BY points DESC, id ASC LIMIT ?", (limit,)
+    ).fetchall()
+    return [tuple(r) if with_ids else tuple(r[:3]) for r in rows]
+
+
+@_locked
+def user_place(conn, user_id):
+    """Место пользователя в общем рейтинге (1 — первое). При равных баллах выше тот, кто раньше пришёл."""
+    row = conn.execute(
+        """SELECT COUNT(*) + 1 FROM users u, users me
+           WHERE me.id = ? AND (u.points > me.points OR (u.points = me.points AND u.id < me.id))""",
+        (user_id,),
+    ).fetchone()
+    return row[0] if row else None
+
+
+@_locked
+def user_totals(conn, user_id):
+    """Сколько всего у пользователя распознаваний и викторин (а не только последних 20)."""
+    scans = conn.execute("SELECT COUNT(*) FROM scans WHERE user_id = ?", (user_id,)).fetchone()[0]
+    quizzes = conn.execute("SELECT COUNT(*) FROM quiz_results WHERE user_id = ?", (user_id,)).fetchone()[0]
+    return scans, quizzes
+
+
+@_locked
+def user_class_counts(conn, user_id):
+    """Что пользователь распознавал: [(класс, сколько раз)] — с учётом его исправлений."""
     return conn.execute(
-        "SELECT name, school, points FROM users ORDER BY points DESC, id ASC LIMIT ?", (limit,)
+        "SELECT COALESCE(corrected, predicted) AS c, COUNT(*) FROM scans WHERE user_id = ? GROUP BY c",
+        (user_id,),
     ).fetchall()
 
 
