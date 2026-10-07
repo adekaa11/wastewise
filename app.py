@@ -19,7 +19,7 @@ from core.content import (LOW_CONFIDENCE, POINTS_PER_CORRECT_ANSWER, POINTS_PER_
                           canonical, hazard_hint, level_for)
 from core.model import DETECTOR_PATH, check_scene, classify, load_image, load_model
 from core.pg import connection_hint
-from core.quiz import ai_available, generate_questions, random_questions
+from core.quiz import random_questions
 from core import storage, ui
 
 ROOT = Path(__file__).resolve().parent
@@ -36,12 +36,6 @@ FEEDBACK_DIR = ROOT / "data" / "feedback"
 
 # ---------- Настройки и секреты ----------
 load_dotenv(ROOT / ".env")
-try:  # на Streamlit Cloud ключ хранится в «Secrets», а не в файле .env
-    for key in ("OPENAI_API_KEY", "OPENAI_MODEL"):
-        if key in st.secrets and not os.getenv(key):
-            os.environ[key] = st.secrets[key]
-except Exception:
-    pass
 
 
 def setting(key):
@@ -422,27 +416,9 @@ elif page == "Викторина":
                    "Без баллов можно тренироваться сколько угодно.")
     else:
         st.caption("Войдите, чтобы получать баллы за правильные ответы.")
-    mode = st.radio("Режим", ["Готовые вопросы", "Вопросы по своему тексту (ИИ)"], horizontal=True)
-
-    if mode == "Готовые вопросы":
-        if st.button("Начать новую викторину (5 вопросов)", type="primary"):
-            st.session_state.quiz = {"mode": "bank", "questions": random_questions(5), "uid": uuid.uuid4().hex}
-            st.session_state.quiz_answers, st.session_state.quiz_done = {}, False
-    else:
-        if not ai_available():
-            st.info("Для этого режима нужен ключ OpenAI (OPENAI_API_KEY). Готовые вопросы работают без него.")
-        text = st.text_area("Вставьте текст об экологии или сортировке", height=150)
-        difficulty = st.selectbox("Сложность", ["лёгкий", "средний", "сложный"])
-        if st.button("Сгенерировать", type="primary", disabled=not ai_available() or len(text) < 50):
-            try:
-                with st.spinner("ИИ составляет вопросы…"):
-                    qs = generate_questions(text, difficulty)
-                st.session_state.quiz = {"mode": "ai", "questions": qs, "uid": uuid.uuid4().hex}
-                st.session_state.quiz_answers, st.session_state.quiz_done = {}, False
-            except Exception as e:
-                st.error(f"Не получилось сгенерировать вопросы: {e}")
-        if 0 < len(text) < 50:
-            st.caption("Текст слишком короткий — нужно хотя бы 50 символов.")
+    if st.button("Начать новую викторину (5 вопросов)", type="primary"):
+        st.session_state.quiz = {"mode": "bank", "questions": random_questions(5), "uid": uuid.uuid4().hex}
+        st.session_state.quiz_answers, st.session_state.quiz_done = {}, False
 
     quiz = st.session_state.quiz
     if quiz:
