@@ -1,0 +1,31 @@
+# Будильник для сайта: бесплатный Streamlit Cloud усыпляет приложение, если на него долго никто не заходит.
+# Каждые 3 часа браузер на сервере GitHub открывает сайт и, если он спит, нажимает «разбудить».
+# Данные при этом не важны — они в Supabase; это только чтобы первый посетитель не видел экран «Zzzz».
+# Ручной запуск: Actions → wake-streamlit → Run workflow.
+name: wake-streamlit
+
+on:
+  schedule:
+    - cron: "17 */3 * * *"  # каждые 3 часа, в 17 минут (не ровно в :00 — в это время GitHub перегружен)
+  workflow_dispatch:
+  push:  # проверочный запуск, когда меняется сам будильник
+    paths: [".github/workflows/wake-streamlit.yml", ".github/wake_streamlit.py"]
+
+permissions:
+  contents: read
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Playwright и Chromium
+        run: |
+          pip install -q playwright
+          python -m playwright install --with-deps chromium
+      - name: Разбудить сайт
+        run: python .github/wake_streamlit.py https://wastewise-kz.streamlit.app/
