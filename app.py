@@ -20,7 +20,7 @@ from core.content import (LOW_CONFIDENCE, POINTS_PER_CORRECT_ANSWER, POINTS_PER_
 from core.model import DETECTOR_PATH, check_scene, classify, load_image, load_model
 from core.pg import connection_hint
 from core.quiz import random_questions
-from core import storage, ui
+from core import assistant, storage, ui
 
 ROOT = Path(__file__).resolve().parent
 
@@ -36,6 +36,12 @@ FEEDBACK_DIR = ROOT / "data" / "feedback"
 
 # ---------- Настройки и секреты ----------
 load_dotenv(ROOT / ".env")
+try:  # на Streamlit Cloud ключ OpenAI для ИИ-помощника хранится в «Secrets», а не в файле .env
+    for key in ("OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_BASE_URL"):
+        if key in st.secrets and not os.getenv(key):
+            os.environ[key] = str(st.secrets[key])
+except Exception:
+    pass
 
 
 def setting(key):
@@ -214,12 +220,13 @@ with st.sidebar:
     st.markdown("### ♻️ WasteWise")
     if user:
         points_slot = st.empty()  # заполняется в конце скрипта, чтобы баллы были свежими
-        pages = ["Главная", "Распознать отходы", "Викторина", "Рейтинг", "Профиль"]
+        pages = ["Главная", "Распознать отходы", "Спросить ИИ", "Викторина", "Рейтинг", "Профиль"]
     else:
-        pages = ["Главная", "Распознать отходы", "Викторина", "Рейтинг", "Вход", "Регистрация"]
+        pages = ["Главная", "Распознать отходы", "Спросить ИИ", "Викторина", "Рейтинг", "Вход", "Регистрация"]
     page = st.radio("Навигация", pages, label_visibility="collapsed")
     if user and st.button("Выйти"):
         st.session_state.user_id = None
+        st.session_state.pop("ai_answer", None)  # ответ ИИ — личный, следующему не показываем
         st.rerun()
     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
     st.caption(AUTHOR)
@@ -403,6 +410,60 @@ elif page == "Распознать отходы":
                                + (f" +{POINTS_PER_FEEDBACK} баллов." if user else ""))
         if not user:
             st.caption("Войдите, чтобы получать баллы и участвовать в рейтинге.")
+
+# =====================================================================
+# СПРОСИТЬ ИИ — текстовый помощник для предметов, которых нет среди 7 типов (core/assistant.py)
+# =====================================================================
+elif page == "Спросить ИИ":
+    ui.page_header("Не знаешь, куда выбросить?", "Напиши, что за предмет, — ИИ подскажет, куда его нести "
+                   "и как подготовить. Например: «блистер от таблеток», «старый градусник», «коробка от сока».",
+                   BIN_COLORS)
+    if not assistant.available():
+        st.info("ИИ-помощник сейчас выключен. Распознавание по фото и викторина работают как обычно.")
+    elif not user:
+        st.info("Войдите или зарегистрируйтесь, чтобы задавать вопросы ИИ-помощнику.")
+    else:
+        left = assistant.left_today(user["id"])
+        st.caption(f"Осталось вопросов на сегодня: {left} из {assistant.PER_USER_PER_DAY}. "
+                   "Баллы за вопросы не начисляются.")
+        with st.form("ask_ai", clear_on_submit=False):
+            question = st.text_input("Что за предмет?", max_chars=assistant.MAX_LEN,
+                                     placeholder="например, крышка от йогурта")
+            asked = st.form_submit_button("Спросить", type="primary")
+        if asked:
+            try:
+                with st.spinner("ИИ думает…"):
+                    st.session_state.ai_answer = assistant.ask(question, user["id"])[0]
+                    st.session_state.ai_question = question
+                st.rerun()  # обновить «Осталось вопросов»
+            except assistant.AssistantError as e:
+                st.session_state.pop("ai_answer", None)
+                st.warning(str(e))
+
+        ans = st.session_state.get("ai_answer")
+        if ans:
+            kind = ans["type"]
+            info = WASTE_INFO.get(kind)
+            if kind == "off_topic":
+                st.info("Я отвечаю только на вопросы о том, куда выбросить или сдать предмет. "
+                        "Опишите предмет, например: «пустая банка из-под краски».")
+            else:
+                if info:
+                    title, emoji, color = info["name"], info.get("emoji", ""), info["color"]
+                elif kind == "hazardous":
+                    title, emoji, color = "Опасные отходы", "☣️", ui.AMBER
+                else:
+                    title, emoji, color = "Не удалось определить", "❔", "#616161"
+                item = f" — {ans['item']}" if ans.get("item") else ""
+                ui.block(f"{emoji} {ui.esc(title)}{ui.esc(item)}", ui.esc(ans["answer"]))
+                if kind == "hazardous" or (info and info.get("hazardous")):
+                    st.warning("Опасные отходы — только в специальные пункты приёма, не в мусорный бак "
+                               "и не в канализацию.")
+                if ans["steps"]:
+                    ui.steps("Как подготовить", ans["steps"], color)
+                if info:
+                    ui.block("📍 Куда нести (правила WasteWise)", ui.esc(info["where"]))
+            st.caption("Ответ составил ИИ и может ошибаться. Сомневаетесь — уточните в пункте приёма.")
 
 # =====================================================================
 # ВИКТОРИНА
