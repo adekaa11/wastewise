@@ -17,6 +17,7 @@
 перерасхода этого достаточно, жёсткий потолок ставится лимитом расходов в кабинете OpenAI.
 """
 import json
+import logging
 import os
 import threading
 from datetime import datetime, timezone
@@ -32,6 +33,8 @@ DEFAULT_MODEL = "gpt-4o-mini"
 # Кроме 7 типов сайта — опасные отходы (лампы, лекарства, химия), «непонятно» и «вопрос не о мусоре».
 EXTRA_TYPES = ("hazardous", "unknown", "off_topic")
 ALLOWED_TYPES = tuple(WASTE_INFO) + EXTRA_TYPES
+
+log = logging.getLogger("wastewise")
 
 
 class AssistantError(Exception):
@@ -158,6 +161,10 @@ def ask(question, user_id, client=None):
         )
         result = _clean(resp.choices[0].message.content)
     except Exception as e:
+        # Причина — в логи (Manage app): тип ошибки и код OpenAI, например invalid_api_key или
+        # insufficient_quota. Текст ошибки не пишем: в нём бывает часть ключа.
+        log.warning("ИИ-помощник: запрос не удался — %s (code=%s, status=%s)", type(e).__name__,
+                    getattr(e, "code", None), getattr(e, "status_code", None))
         with _LOCK:  # неудачный запрос лимит не тратит
             _usage[(day, user_id)] -= 1
             _usage[(day, "*")] -= 1

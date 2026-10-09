@@ -124,3 +124,28 @@ def test_page_shows_escaped_answer_and_gives_no_points(tmp_path, monkeypatch):
     assert "Сполосните" in html
     assert fake.calls == 1 and app.points() == before
     assert any(f"{assistant.PER_USER_PER_DAY - 1} из {assistant.PER_USER_PER_DAY}" in c for c in app.captions())
+
+
+def test_failure_reason_is_logged_without_key(caplog):
+    """Если OpenAI отказал, в логах видно почему (код ошибки), но не текст с ключом."""
+    from core import assistant
+
+    class AuthError(Exception):
+        code, status_code = "invalid_api_key", 401
+
+    class Broken:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(**kwargs):
+                    raise AuthError("Incorrect API key provided: sk-abc123...")
+
+    assistant.reset()
+    with caplog.at_level("WARNING", logger="wastewise"):
+        try:
+            assistant.ask("старый градусник", 1, client=Broken())
+        except assistant.AssistantError:
+            pass
+    text = caplog.text
+    assert "invalid_api_key" in text and "401" in text
+    assert "sk-abc" not in text
