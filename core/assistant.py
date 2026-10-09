@@ -112,6 +112,11 @@ def _make_client():
 
 def _clean(raw):
     """Проверить ответ модели: только разрешённые поля, типы и длины."""
+    raw = str(raw or "").strip()
+    if raw.startswith("```"):  # Gemini и др. иногда оборачивают JSON в ```json … ```
+        raw = raw.strip("`").strip()
+        if raw.lower().startswith("json"):
+            raw = raw[4:]
     data = json.loads(raw)
     kind = data.get("type")
     if kind not in ALLOWED_TYPES:
