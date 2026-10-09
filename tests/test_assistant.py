@@ -157,3 +157,14 @@ def test_json_in_code_fence_is_accepted():
 
     raw = '```json\n{"type": "glass", "item": "банка", "answer": "В контейнер для стекла.", "steps": []}\n```'
     assert assistant._clean(raw)["type"] == "glass"
+
+
+def test_hazard_in_answer_wins_over_material():
+    """«Металл», но в ответе «опасные отходы» → опасные отходы, а не «Куда нести: контейнер для вторсырья»."""
+    from core import assistant
+
+    raw = ('{"type": "metal", "item": "банка из-под краски", '
+           '"answer": "Пустые банки из-под краски относятся к опасным отходам. Сдай в спецпункт.", "steps": []}')
+    assert assistant._clean(raw)["type"] == "hazardous"
+    ok = '{"type": "metal", "item": "банка", "answer": "Сполосни и сдай в металл.", "steps": []}'
+    assert assistant._clean(ok)["type"] == "metal"
