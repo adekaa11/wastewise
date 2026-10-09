@@ -149,3 +149,11 @@ def test_failure_reason_is_logged_without_key(caplog):
     text = caplog.text
     assert "invalid_api_key" in text and "401" in text
     assert "sk-abc" not in text
+
+
+def test_json_in_code_fence_is_accepted():
+    """Gemini через OpenAI-совместимый адрес может обернуть JSON в ```json … ``` — это тоже ответ."""
+    from core import assistant
+
+    raw = '```json\n{"type": "glass", "item": "банка", "answer": "В контейнер для стекла.", "steps": []}\n```'
+    assert assistant._clean(raw)["type"] == "glass"
