@@ -105,7 +105,7 @@ section[data-testid="stSidebar"] .stButton button {{
 section[data-testid="stSidebar"] [data-testid="stAlert"] {{ background:#1B3D2D; border:none; box-shadow:none; }}
 section[data-testid="stSidebar"] [data-testid="stAlert"] * {{ color:var(--lime) !important; font-weight:600; }}
 .ww-logo {{ background:{SURFACE}; border-radius:16px; padding:10px; display:inline-block;
-    transform:rotate(-2deg); box-shadow:4px 4px 0 #000; }}
+    box-shadow:4px 4px 0 #000; }}
 .ww-logo img {{ display:block; border-radius:8px; width:150px; }}
 
 /* ---------- Кнопки ---------- */
