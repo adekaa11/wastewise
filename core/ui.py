@@ -22,6 +22,8 @@ LINE = "#E3E6E0"     # границы
 GREEN = "#2F9E68"    # акцент
 AMBER = "#E08A2E"    # второй акцент
 MUTED = "#4A5A52"    # приглушённый текст
+LIME = "#C8F169"     # яркая подсветка: активный пункт меню, выделенное слово в заголовке
+STICKER = f"4px 4px 0 {INK}"  # жёсткая тень «наклейки» — только у главных блоков, см. DESIGN.md
 
 CSS = f"""
 <style>
@@ -29,28 +31,51 @@ CSS = f"""
 
 html, body, [class*="css"], .stApp {{ font-family:'IBM Plex Sans', system-ui, sans-serif; }}
 .stApp {{ background:{PAPER}; color:{INK}; }}
-h1, h2, h3 {{ font-family:'Rubik', system-ui, sans-serif; letter-spacing:-.01em; color:{INK}; }}
-h1 {{ font-size:2.3rem; }}
-h2 {{ font-size:1.7rem; padding-top:.6rem; }}
+h1, h2, h3 {{ font-family:'Rubik', system-ui, sans-serif; letter-spacing:-.02em; color:{INK}; }}
+h1 {{ font-size:2.3rem; font-weight:700; }}
+h2 {{ font-size:1.7rem; font-weight:700; padding-top:.6rem; }}
+/* Подзаголовок раздела с маленькой «крышкой бака» слева */
+[data-testid="stMain"] h2 {{ display:flex; align-items:center; gap:12px; }}
+[data-testid="stMain"] h2::before {{ content:""; flex:none; width:22px; height:10px; border-radius:4px 4px 2px 2px;
+    background:{GREEN}; box-shadow:0 3px 0 {INK}; }}
+.ww-tag h2::before, .ww-tag h2 {{ display:block; }}
+.ww-tag h2::before {{ content:none; }}
 
 /* ---------- Боковое меню ---------- */
 section[data-testid="stSidebar"] {{ background:{INK}; border-right:none; }}
 section[data-testid="stSidebar"] * {{ color:#C9DCD2; }}
-section[data-testid="stSidebar"] h3 {{ color:{PAPER}; }}
+section[data-testid="stSidebar"] h3 {{ color:{PAPER}; font-size:1.4rem; }}
+/* Пункты меню — крупные строки без кружков; активный подсвечен лаймом, как наклейка */
+section[data-testid="stSidebar"] [role="radiogroup"] {{ gap:4px; }}
 section[data-testid="stSidebar"] [role="radiogroup"] label {{
-    padding:.3rem .2rem; border-radius:10px; }}
+    padding:.55rem .85rem; border-radius:12px; width:100%; max-width:none; margin:0; border:2px solid transparent;
+    box-sizing:border-box;
+    transition:background .12s ease; }}
+section[data-testid="stSidebar"] [role="radiogroup"] label > div > div:not([data-testid="stMarkdownContainer"]) {{
+    display:none; }}
+section[data-testid="stSidebar"] [role="radiogroup"] label p {{ font-size:1rem; font-weight:500; }}
+section[data-testid="stSidebar"] [role="radiogroup"] label:hover {{ background:#1B3D2D; }}
+section[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {{
+    background:{LIME}; border-color:{LIME}; box-shadow:3px 3px 0 #000; }}
+section[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p {{ color:{INK}; font-weight:600; }}
 section[data-testid="stSidebar"] .stButton button {{
-    background:transparent; border:1px solid #2C5443; color:#C9DCD2; width:100%; }}
-.ww-logo {{ background:{SURFACE}; border-radius:16px; padding:10px; display:inline-block; }}
+    background:transparent; border:1px solid #2C5443; color:#C9DCD2; width:100%; box-shadow:none; }}
+.ww-logo {{ background:{SURFACE}; border-radius:16px; padding:10px; display:inline-block;
+    transform:rotate(-2deg); box-shadow:4px 4px 0 #000; }}
 .ww-logo img {{ display:block; border-radius:8px; width:150px; }}
 
 /* ---------- Кнопки, вкладки, поля ---------- */
 .stButton button, .stFormSubmitButton button, .stDownloadButton button {{
-    border-radius:999px; font-weight:600; padding:.5rem 1.4rem; border:1px solid {LINE};
-    transition:transform .08s ease; }}
-.stButton button:hover, .stFormSubmitButton button:hover {{ transform:translateY(-1px); }}
+    border-radius:999px; font-weight:600; padding:.55rem 1.5rem; border:2px solid {INK};
+    background:{SURFACE}; color:{INK}; box-shadow:3px 3px 0 {INK};
+    transition:transform .08s ease, box-shadow .08s ease; }}
+.stButton button:hover, .stFormSubmitButton button:hover, .stDownloadButton button:hover {{
+    transform:translate(-1px, -1px); box-shadow:4px 4px 0 {INK}; border-color:{INK}; color:{INK}; }}
+.stButton button:active, .stFormSubmitButton button:active {{
+    transform:translate(3px, 3px); box-shadow:0 0 0 {INK}; }}
 .stButton button[kind="primary"], .stFormSubmitButton button[kind="primary"] {{
-    background:{GREEN}; border-color:{GREEN}; color:#fff; }}
+    background:{GREEN}; border-color:{INK}; color:#fff; }}
+.stButton button[kind="primary"]:hover, .stFormSubmitButton button[kind="primary"]:hover {{ color:#fff; }}
 .stButton button:focus-visible, .stFormSubmitButton button:focus-visible {{
     outline:3px solid #8FD5AE; outline-offset:2px; }}
 .stTabs [data-baseweb="tab"] {{ font-weight:600; }}
@@ -58,8 +83,9 @@ section[data-testid="stSidebar"] .stButton button {{
 
 /* Загрузка фото: большая зона с пунктиром — сразу видно, куда тянуть файл */
 [data-testid="stFileUploaderDropzone"] {{
-    background:{SURFACE}; border:2px dashed #B9D3C4; border-radius:18px; padding:28px 24px; }}
-[data-testid="stFileUploaderDropzone"]:hover {{ border-color:{GREEN}; }}
+    background:{SURFACE}; border:2px dashed {INK}; border-radius:18px; padding:32px 26px;
+    box-shadow:{STICKER}; }}
+[data-testid="stFileUploaderDropzone"]:hover {{ background:#F1FAE0; }}
 
 /* Варианты ответов (викторина, режимы) — крупные строки, на которые удобно нажимать с телефона */
 [data-testid="stMain"] [role="radiogroup"] {{ gap:8px; }}
@@ -83,32 +109,54 @@ section[data-testid="stSidebar"] .stButton button {{
 [data-testid="stExpander"] details {{ border-radius:14px; border-color:{LINE}; background:{SURFACE}; }}
 
 /* ---------- Метрики ---------- */
+/* Числа на главной — тёмная плитка с лаймовым числом, как табло на станции */
 [data-testid="stMetric"] {{
-    background:{SURFACE}; border:1px solid {LINE}; border-radius:16px; padding:18px 22px; }}
+    background:{INK}; border:2px solid {INK}; border-radius:18px; padding:20px 24px;
+    box-shadow:4px 4px 0 {GREEN}; }}
 [data-testid="stMetricValue"] {{
-    font-family:'Rubik', sans-serif; font-weight:600; color:{GREEN}; }}
-[data-testid="stMetricLabel"] p {{ color:{MUTED}; font-size:.9rem; }}
+    font-family:'Rubik', sans-serif; font-weight:700; color:{LIME}; font-size:2.6rem; }}
+[data-testid="stMetricLabel"] p {{ color:#C9DCD2; font-size:.95rem; }}
 
 /* ---------- Главная ---------- */
 .ww-hero {{
-    position:relative; border-radius:22px; overflow:hidden; padding:72px 56px;
-    display:flex; flex-direction:column; gap:14px; margin-bottom:34px; }}
-.ww-hero h1 {{ color:#fff; font-size:clamp(1.7rem, 3.4vw, 3rem); line-height:1.12;
-    margin:0; max-width:17ch; text-shadow:0 2px 18px rgba(0,0,0,.35); }}
-.ww-hero p {{ color:#D9E8DF; font-size:clamp(1rem, 1.3vw, 1.2rem); margin:0; max-width:46ch; }}
-.ww-eyebrow {{ color:#8FD5AE; font-weight:600; font-size:.8rem;
-    letter-spacing:.16em; text-transform:uppercase; margin:0; }}
+    position:relative; border-radius:24px; overflow:hidden; background:{INK};
+    border:2px solid {INK}; box-shadow:6px 6px 0 {GREEN};
+    display:grid; grid-template-columns:minmax(0, 1.15fr) minmax(0, .85fr); margin:8px 0 38px; }}
+.ww-hero-text {{ padding:56px 48px 40px; display:flex; flex-direction:column; gap:16px; }}
+.ww-hero h1 {{ color:#fff; font-size:clamp(2rem, 4vw, 3.5rem); line-height:1.14; letter-spacing:-.03em;
+    margin:0; padding:0; max-width:14ch; }}
+.ww-hero h1 mark {{ background:{LIME}; color:{INK}; padding:0 .16em; border-radius:10px; line-height:1;
+    box-decoration-break:clone; -webkit-box-decoration-break:clone; }}
+.ww-hero p {{ color:#D9E8DF; font-size:clamp(1rem, 1.3vw, 1.15rem); margin:0; max-width:44ch; line-height:1.55; }}
+.ww-hero .ww-eyebrow {{ align-self:flex-start; color:{INK}; background:#8FD5AE; font-weight:600; font-size:.85rem;
+    border-radius:999px; padding:5px 14px; margin:0; }}
+.ww-hero-art {{ background-size:cover; background-position:center; min-height:320px;
+    border-left:2px solid {INK}; }}
+/* Ряд баков внизу героя: крышка, корпус цвета бака и подпись — фирменный приём крупно */
+.ww-bins {{ grid-column:1 / -1; display:grid; grid-template-columns:repeat(7, 1fr); gap:10px;
+    padding:22px 28px 26px; background:#0B1F16; border-top:2px solid #000; }}
+.ww-bin {{ display:flex; flex-direction:column; align-items:center; gap:7px; min-width:0; }}
+.ww-bin i {{ display:block; width:100%; height:9px; border-radius:6px 6px 2px 2px; background:var(--c);
+    filter:brightness(1.25); }}
+.ww-bin b {{ display:flex; align-items:center; justify-content:center; width:86%; height:46px;
+    margin-top:-4px; background:var(--c); border-radius:4px 4px 10px 10px; font-size:1.4rem; font-weight:400;
+    box-shadow:inset 0 -6px 0 rgba(0,0,0,.18); }}
+.ww-bin span {{ color:#C9DCD2; font-size:.8rem; text-align:center; overflow-wrap:anywhere; line-height:1.2; }}
 
-.ww-grid {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:18px; }}
-.ww-card {{ background:{SURFACE}; border:1px solid {LINE}; border-radius:18px;
-    padding:26px 24px; display:flex; flex-direction:column; gap:8px; }}
-.ww-card h3 {{ margin:0; font-size:1.15rem; }}
-.ww-card p {{ margin:0; color:{MUTED}; font-size:.95rem; line-height:1.5; }}
-.ww-num {{ font-family:'Rubik', sans-serif; font-size:1.6rem; font-weight:600; color:{GREEN};
-    line-height:1; }}
+.ww-grid {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:20px;
+    margin-bottom:26px; }}
+.ww-card {{ position:relative; background:{SURFACE}; border:2px solid {INK}; border-top:12px solid var(--c, {GREEN});
+    border-radius:18px; padding:24px 24px 26px; display:flex; flex-direction:column; gap:10px;
+    box-shadow:{STICKER}; }}
+.ww-card h3 {{ margin:0; font-size:1.3rem; }}
+.ww-card p {{ margin:0; color:{MUTED}; font-size:.98rem; line-height:1.5; }}
+.ww-num {{ font-family:'Rubik', sans-serif; font-size:1rem; font-weight:700; color:#fff; line-height:1;
+    background:var(--c, {GREEN}); align-self:flex-start; border-radius:999px; padding:7px 12px; }}
 
-.ww-quote {{ background:{SURFACE}; border-left:5px solid {AMBER}; border-radius:14px;
-    padding:22px 26px; color:{MUTED}; font-size:1rem; line-height:1.6; }}
+.ww-quote {{ position:relative; background:#FFF4E6; border:2px solid {INK}; border-radius:18px;
+    padding:26px 30px 26px 84px; color:{INK}; font-size:1.12rem; line-height:1.6; box-shadow:4px 4px 0 {AMBER}; }}
+.ww-quote::before {{ content:"“"; position:absolute; left:24px; top:6px; font-family:'Rubik', sans-serif;
+    font-size:5rem; font-weight:700; color:{AMBER}; line-height:1; }}
 
 .ww-chip {{ display:inline-block; background:#EAF5EF; color:{GREEN}; font-weight:600;
     border-radius:999px; padding:4px 14px; font-size:.85rem; }}
@@ -121,22 +169,22 @@ section[data-testid="stSidebar"] .ww-foot a {{ color:#8FD5AE; border-color:#2C54
 
 /* ---------- Заголовок внутренних страниц: название + полоса из цветов баков ---------- */
 .ww-head {{ margin:0 0 6px; }}
-.ww-head h1 {{ font-size:clamp(1.9rem, 3.6vw, 2.8rem); line-height:1.08; margin:0; padding:0; }}
+.ww-head h1 {{ font-size:clamp(2.1rem, 4vw, 3.2rem); line-height:1.04; letter-spacing:-.03em; margin:0; padding:0; }}
 .ww-head p {{ color:{MUTED}; font-size:1.05rem; margin:10px 0 0; max-width:60ch; line-height:1.5; }}
-.ww-stripe {{ display:flex; gap:4px; margin:16px 0 14px; max-width:280px; }}
-.ww-stripe span {{ flex:1; height:6px; border-radius:3px; }}
+.ww-stripe {{ display:flex; gap:6px; margin:18px 0 18px; max-width:340px; }}
+.ww-stripe span {{ flex:1; height:12px; border-radius:5px 5px 2px 2px; box-shadow:0 3px 0 {INK}; }}
 
 /* Типы отходов: цветные «крышки» */
 .ww-types {{ display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 4px; }}
 .ww-type {{ display:inline-flex; align-items:center; gap:6px; background:{SURFACE};
-    border:1px solid {LINE}; border-top:4px solid var(--c); border-radius:10px;
+    border:2px solid {INK}; border-top:7px solid var(--c); border-radius:10px;
     padding:6px 12px 7px; font-size:.9rem; font-weight:500; }}
 .ww-type.off {{ border-top-color:#D5D9D3; color:#8A968F; }}
 .ww-type.off small {{ font-size:.75rem; }}
 
 /* ---------- Ответ модели: бирка цвета бака ---------- */
-.ww-tag {{ position:relative; background:var(--c); color:#fff; border-radius:20px;
-    padding:24px 26px 22px 54px; margin-bottom:14px; }}
+.ww-tag {{ position:relative; background:var(--c); color:#fff; border-radius:20px; border:2px solid {INK};
+    padding:24px 26px 22px 54px; margin-bottom:16px; box-shadow:{STICKER}; }}
 .ww-tag::before {{ content:""; position:absolute; left:20px; top:30px; width:16px; height:16px;
     border-radius:50%; background:{PAPER}; box-shadow:inset 0 0 0 3px rgba(0,0,0,.18); }}
 .ww-tag h2 {{ color:#fff; margin:0; padding:0; font-size:clamp(1.6rem, 2.6vw, 2.2rem); line-height:1.1; }}
@@ -146,12 +194,12 @@ section[data-testid="stSidebar"] .ww-foot a {{ color:#8FD5AE; border-color:#2C54
 .ww-meter div {{ height:100%; background:#fff; border-radius:5px; }}
 .ww-tag p {{ margin:0; color:rgba(255,255,255,.92); font-size:.95rem; }}
 
-.ww-block {{ background:{SURFACE}; border:1px solid {LINE}; border-radius:16px; padding:16px 20px;
+.ww-block {{ background:{SURFACE}; border:2px solid {INK}; border-radius:16px; padding:16px 20px;
     margin-bottom:12px; }}
 .ww-block-title {{ font-family:'Rubik', sans-serif; font-weight:600; font-size:1rem; margin:0 0 6px; color:{INK}; }}
 .ww-block p {{ margin:0; color:{INK}; line-height:1.55; }}
-.ww-block.warn {{ border-left:5px solid {AMBER}; }}
-.ww-block.fact {{ background:#EEF5F0; border-color:#EEF5F0; }}
+.ww-block.warn {{ border-left:8px solid {AMBER}; background:#FFF4E6; }}
+.ww-block.fact {{ background:#EEF5F0; border-style:dashed; }}
 .ww-block.fact p {{ color:{MUTED}; }}
 .ww-steps {{ list-style:none; counter-reset:s; margin:4px 0 0; padding:0; }}
 .ww-steps li {{ counter-increment:s; position:relative; padding:4px 0 4px 34px; line-height:1.5; }}
@@ -169,13 +217,13 @@ section[data-testid="stSidebar"] .ww-foot a {{ color:#8FD5AE; border-color:#2C54
 
 /* ---------- Рейтинг ---------- */
 .ww-rules {{ display:flex; flex-wrap:wrap; gap:10px; margin:4px 0 6px; }}
-.ww-rule {{ background:{SURFACE}; border:1px solid {LINE}; border-radius:12px; padding:8px 14px;
+.ww-rule {{ background:{SURFACE}; border:2px solid {INK}; border-radius:12px; padding:8px 14px;
     font-size:.92rem; }}
 .ww-rule b {{ font-family:'Rubik', sans-serif; color:{GREEN}; font-size:1.05rem; margin-right:4px; }}
 
 .ww-podium {{ display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; align-items:end;
     margin:10px 0 18px; }}
-.ww-step {{ background:{SURFACE}; border:1px solid {LINE}; border-radius:18px 18px 10px 10px;
+.ww-step {{ background:{SURFACE}; border:2px solid {INK}; border-radius:18px 18px 10px 10px; box-shadow:{STICKER};
     padding:16px 12px; text-align:center; display:flex; flex-direction:column; gap:4px;
     justify-content:flex-end; min-width:0; }}
 .ww-step.p1 {{ min-height:210px; border-top:6px solid #E3B33B; }}
@@ -202,8 +250,9 @@ section[data-testid="stSidebar"] .ww-foot a {{ color:#8FD5AE; border-color:#2C54
 /* ---------- Викторина ---------- */
 .ww-qnum {{ font-family:'Rubik', sans-serif; font-weight:600; color:{GREEN}; font-size:.9rem; }}
 .ww-score {{ background:{INK}; color:#fff; border-radius:20px; padding:26px 28px; margin:6px 0 16px;
+    box-shadow:6px 6px 0 {GREEN};
     display:flex; align-items:center; gap:22px; flex-wrap:wrap; }}
-.ww-score .big {{ font-family:'Rubik', sans-serif; font-size:3rem; font-weight:700; line-height:1; color:#8FD5AE; }}
+.ww-score .big {{ font-family:'Rubik', sans-serif; font-size:3.4rem; font-weight:700; line-height:1; color:{LIME}; }}
 .ww-score h3 {{ color:#fff; margin:0 0 4px; font-size:1.3rem; }}
 .ww-score p {{ margin:0; color:#C9DCD2; }}
 .ww-review {{ background:{SURFACE}; border:1px solid {LINE}; border-left:5px solid var(--c);
@@ -212,12 +261,13 @@ section[data-testid="stSidebar"] .ww-foot a {{ color:#8FD5AE; border-color:#2C54
 
 /* ---------- Профиль ---------- */
 .ww-me {{ display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-bottom:8px; }}
-.ww-avatar {{ width:72px; height:72px; border-radius:50%; background:{GREEN}; color:#fff;
+.ww-avatar {{ width:72px; height:72px; border-radius:50%; background:{LIME}; color:{INK}; border:2px solid {INK};
+    box-shadow:3px 3px 0 {INK};
     font-family:'Rubik', sans-serif; font-size:2rem; font-weight:600; display:flex;
     align-items:center; justify-content:center; flex:none; }}
 .ww-me h1 {{ margin:0; padding:0; font-size:clamp(1.8rem, 3.4vw, 2.6rem); line-height:1.1; }}
 .ww-me p {{ margin:4px 0 0; color:{MUTED}; }}
-.ww-level {{ background:{SURFACE}; border:1px solid {LINE}; border-radius:18px; padding:18px 22px;
+.ww-level {{ background:{SURFACE}; border:2px solid {INK}; border-radius:18px; padding:18px 22px; box-shadow:{STICKER};
     margin:10px 0 16px; }}
 .ww-level-top {{ display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; }}
 .ww-level-top b {{ font-family:'Rubik', sans-serif; font-size:1.25rem; }}
@@ -238,12 +288,18 @@ section[data-testid="stSidebar"] .ww-foot a {{ color:#8FD5AE; border-color:#2C54
 .ww-hist small {{ color:{MUTED}; }}
 .ww-hist .when {{ color:{MUTED}; font-size:.85rem; text-align:right; white-space:nowrap; }}
 
-.ww-empty {{ background:{SURFACE}; border:1px dashed #C8D3CC; border-radius:16px; padding:22px;
+.ww-empty {{ background:{SURFACE}; border:2px dashed {INK}; border-radius:16px; padding:24px;
     color:{MUTED}; }}
 .ww-empty b {{ color:{INK}; }}
 
 @media (max-width: 640px) {{
-    .ww-hero {{ padding:44px 26px; }}
+    .ww-hero {{ grid-template-columns:1fr; box-shadow:4px 4px 0 {GREEN}; }}
+    .ww-hero-text {{ padding:30px 22px 22px; }}
+    .ww-hero-art {{ min-height:190px; border-left:none; border-top:2px solid {INK}; }}
+    .ww-bins {{ grid-template-columns:repeat(4, 1fr); gap:12px 8px; padding:18px 16px 20px; }}
+    .ww-bin b {{ height:38px; font-size:1.15rem; }}
+    .ww-quote {{ padding:22px 20px 20px 62px; font-size:1.02rem; }}
+    .ww-quote::before {{ left:14px; font-size:4rem; }}
     .ww-podium {{ gap:6px; }}
     .ww-step {{ padding:12px 6px; }}
     .ww-step.p1 {{ min-height:180px; }} .ww-step.p2 {{ min-height:150px; }} .ww-step.p3 {{ min-height:130px; }}
@@ -272,24 +328,26 @@ def _html(markup):
 
 # ---------- Главная ----------
 
-def hero(image_b64, eyebrow, title, subtitle):
-    """Крупный блок вверху главной: картинка с затемнением и текст поверх."""
-    scrim = ("linear-gradient(95deg, rgba(16,42,30,.93) 0%, rgba(16,42,30,.78) 42%,"
-             " rgba(16,42,30,.30) 100%)")
+def hero(image_b64, eyebrow, title, subtitle, bins=()):
+    """Крупный блок вверху главной: текст на тёмном, картинка справа и ряд баков снизу.
+    В title можно выделить слово тегом <mark> — оно подсветится лаймом. bins — (emoji, подпись, цвет)."""
+    row = "".join(f'<div class="ww-bin" style="--c:{c}"><i></i><b>{e}</b><span>{esc(n)}</span></div>'
+                  for e, n, c in bins)
     _html(
-        f'<div class="ww-hero" style="background-image:{scrim},'
-        f"url('data:image/jpeg;base64,{image_b64}');background-size:cover;"
-        f'background-position:center">'
-        f'<p class="ww-eyebrow">{eyebrow}</p><h1>{title}</h1><p>{subtitle}</p></div>'
+        f'<div class="ww-hero"><div class="ww-hero-text"><p class="ww-eyebrow">{eyebrow}</p>'
+        f"<h1>{title}</h1><p>{subtitle}</p></div>"
+        f'<div class="ww-hero-art" role="img" aria-label="Люди сортируют мусор по бакам" '
+        f"style=\"background-image:url('data:image/jpeg;base64,{image_b64}')\"></div>"
+        + (f'<div class="ww-bins">{row}</div>' if row else "") + "</div>"
     )
 
 
-def cards(items):
-    """Ряд карточек. items — список (номер, заголовок, текст)."""
+def cards(items, colors=()):
+    """Ряд карточек. items — список (номер, заголовок, текст); colors — цвета «крышек» по порядку."""
     markup = "".join(
-        f'<div class="ww-card"><div class="ww-num">{num}</div>'
-        f"<h3>{title}</h3><p>{text}</p></div>"
-        for num, title, text in items
+        f'<div class="ww-card" style="--c:{colors[i % len(colors)] if colors else GREEN}">'
+        f'<div class="ww-num">{num}</div><h3>{title}</h3><p>{text}</p></div>'
+        for i, (num, title, text) in enumerate(items)
     )
     _html(f'<div class="ww-grid">{markup}</div>')
 
