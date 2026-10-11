@@ -9,7 +9,7 @@ def test_all_pages_render_with_data(app):
     app.go("Распознать отходы").upload(photo("orange"))  # чтобы в рейтинге и профиле были данные
     for page in PAGES:
         app.go(page)  # app.run() внутри проверяет, что исключений нет
-    assert app.at.dataframe, "в профиле должна быть таблица распознаваний"
+    assert any("ww-table" in m.value for m in app.at.markdown), "в профиле должна быть таблица распознаваний"
 
 
 def test_sidebar_points_stay_when_photo_is_rejected(app):

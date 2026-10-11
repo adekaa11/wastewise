@@ -9,7 +9,6 @@ import hashlib
 import uuid
 from pathlib import Path
 
-import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -224,6 +223,11 @@ with st.sidebar:
     else:
         pages = ["Главная", "Распознать отходы", "Спросить ИИ", "Викторина", "Рейтинг", "Вход", "Регистрация"]
     page = st.radio("Навигация", pages, label_visibility="collapsed")
+    # Тема запоминается в ссылке (?theme=dark): переживает обновление страницы и открывается так же по ссылке
+    if "dark" not in st.session_state:
+        st.session_state.dark = st.query_params.get("theme") == "dark"
+    dark = st.toggle("🌙 Тёмная тема", key="dark")
+    st.query_params["theme"] = "dark" if dark else "light"
     if user and st.button("Выйти"):
         st.session_state.user_id = None
         st.session_state.pop("ai_answer", None)  # ответ ИИ — личный, следующему не показываем
@@ -232,6 +236,8 @@ with st.sidebar:
     st.caption(AUTHOR)
     st.markdown(social_links(), unsafe_allow_html=True)
 
+
+ui.theme(dark)
 
 if st.session_state.pop("welcome", False) and user:
     st.toast(f"Добро пожаловать, {user['name']}! Аккаунт создан, вы вошли.", icon="🎉")
@@ -389,7 +395,7 @@ elif page == "Распознать отходы":
             ui.block("💡 Интересный факт", ui.esc(info.get("fact", "")), "fact")
 
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-        with st.container(border=True):
+        with st.container(border=True, key="wwbox_feedback"):
             st.markdown("#### Модель ошиблась?")
             st.caption("Выберите правильный тип — фото попадёт в набор, на котором модель учится дальше"
                        + (f", а вам +{POINTS_PER_FEEDBACK} баллов." if user else "."))
@@ -511,8 +517,8 @@ elif page == "Викторина":
         holder = st.expander("Ваши ответы") if st.session_state.quiz_done else st.container()
         with holder:
             for i, q in enumerate(questions):
-                with st.container(border=True):
-                    ui.question_number(i + 1, total)
+                with st.container(border=True, key=f"wwbox_q{i}"):
+                    ui.question_number(i + 1, total, BIN_COLORS[i % len(BIN_COLORS)])
                     st.session_state.quiz_answers[i] = st.radio(
                         f"**{q['q']}**", q["options"], index=None, key=f"q_{quiz['uid']}_{i}",
                         disabled=st.session_state.quiz_done,
@@ -608,9 +614,8 @@ elif page == "Профиль" and user:
                 for p, conf, f, d in scans[:8]
             ])
             with st.expander("Вся история таблицей"):
-                st.dataframe(pd.DataFrame(
-                    [(rus(p), f"{conf:.0%}", rus(f) if f else "", ui.nice_date(d)) for p, conf, f, d in scans],
-                    columns=["Ответ модели", "Уверенность", "Исправлено на", "Когда"]), width="stretch", hide_index=True)
+                ui.table(["Ответ модели", "Уверенность", "Исправлено на", "Когда"],
+                         [(rus(p), f"{conf:.0%}", rus(f) if f else "", ui.nice_date(d)) for p, conf, f, d in scans])
         else:
             ui.empty("Пока пусто", "Откройте «Распознать отходы» и сфотографируйте первый предмет — "
                      f"+{POINTS_PER_SCAN} баллов.")

@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 
 import streamlit as st
 
-INK = "#102A1E"      # почти чёрный зелёный — текст и тёмные фоны
+INK = "#102A1E"      # почти чёрный зелёный — текст и тёмные фоны (светлая тема)
 PAPER = "#F7F6F1"    # тёплый белый — фон страницы
 SURFACE = "#FFFFFF"  # карточки
 LINE = "#E3E6E0"     # границы
@@ -23,118 +23,233 @@ GREEN = "#2F9E68"    # акцент
 AMBER = "#E08A2E"    # второй акцент
 MUTED = "#4A5A52"    # приглушённый текст
 LIME = "#C8F169"     # яркая подсветка: активный пункт меню, выделенное слово в заголовке
-STICKER = f"4px 4px 0 {INK}"  # жёсткая тень «наклейки» — только у главных блоков, см. DESIGN.md
+
+# Цвета, которые меняются вместе с темой. CSS ниже пишет только var(--имя), поэтому тёмная тема —
+# это просто другой набор значений (DESIGN.md, раздел «Цвета»). Цвета баков от темы не зависят.
+LIGHT = {
+    "bg": PAPER, "surface": SURFACE, "line": LINE, "ink": INK, "muted": MUTED,
+    "edge": INK,          # обводка «наклеек»
+    "shadow": INK,        # жёсткая тень «наклеек»
+    "panel": INK,         # тёмные плашки: герой, заголовок страницы, табло с числами, итог викторины
+    "sidebar": INK,
+    "mint": "#EEF5F0",    # мягкий зелёный фон: факт, «это вы», выбранный ответ
+    "warm": "#FFF4E6",    # мягкий оранжевый фон: «не принимают», цитата, предупреждение
+    "rose": "#FDECEC",    # мягкий красный фон: ошибка
+    "track": "#E9ECE6",   # дорожка столбиков
+    "off": "#8A968F",     # «скоро» — тип, который модель ещё не знает
+    "scheme": "light",
+}
+DARK = {
+    "bg": "#0F1A15", "surface": "#18291F", "line": "#2B4135", "ink": "#ECF3EE", "muted": "#A9BDB2",
+    "edge": "#3F6352", "shadow": "#030806", "panel": "#0A1410", "sidebar": "#08110D",
+    "mint": "#1D3529", "warm": "#352819", "rose": "#3A1E1E", "track": "#283C31", "off": "#73897D",
+    "scheme": "dark",
+}
+
+
+def _vars(theme):
+    return ("".join(f"--{k}:{v};" for k, v in theme.items() if k != "scheme")
+            + f"color-scheme:{theme['scheme']};")
+
+
+STICKER = "4px 4px 0 var(--shadow)"  # тень «наклейки» — только у главных блоков, см. DESIGN.md
 
 CSS = f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Rubik:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
 
+:root {{ {_vars(LIGHT)} --green:{GREEN}; --amber:{AMBER}; --lime:{LIME}; }}
+
 html, body, [class*="css"], .stApp {{ font-family:'IBM Plex Sans', system-ui, sans-serif; }}
-.stApp {{ background:{PAPER}; color:{INK}; }}
-h1, h2, h3 {{ font-family:'Rubik', system-ui, sans-serif; letter-spacing:-.02em; color:{INK}; }}
+.stApp {{ background:var(--bg); color:var(--ink); transition:background .2s ease; }}
+[data-testid="stHeader"] {{ background:var(--bg); }}
+[data-testid="stHeader"] *, [data-testid="stExpandSidebarButton"] * {{ color:var(--ink); }}
+[data-testid="stMain"] p, [data-testid="stMain"] li, [data-testid="stMain"] label,
+[data-testid="stMain"] [data-testid="stWidgetLabel"] * {{ color:var(--ink); }}
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] * {{ color:var(--muted) !important; }}
+hr {{ border-color:var(--line) !important; }}
+h1, h2, h3, h4, h5 {{ font-family:'Rubik', system-ui, sans-serif; letter-spacing:-.02em; color:var(--ink); }}
 h1 {{ font-size:2.3rem; font-weight:700; }}
 h2 {{ font-size:1.7rem; font-weight:700; padding-top:.6rem; }}
-/* Подзаголовок раздела с маленькой «крышкой бака» слева */
-[data-testid="stMain"] h2 {{ display:flex; align-items:center; gap:12px; }}
-[data-testid="stMain"] h2::before {{ content:""; flex:none; width:22px; height:10px; border-radius:4px 4px 2px 2px;
-    background:{GREEN}; box-shadow:0 3px 0 {INK}; }}
-.ww-tag h2::before, .ww-tag h2 {{ display:block; }}
-.ww-tag h2::before {{ content:none; }}
+/* Подзаголовки разделов (## и ### из st.markdown) — с маленькой «крышкой бака» слева */
+[data-testid="stHeadingWithActionElements"] h2, [data-testid="stHeadingWithActionElements"] h3 {{
+    display:flex; align-items:center; gap:12px; }}
+[data-testid="stHeadingWithActionElements"] h2::before, [data-testid="stHeadingWithActionElements"] h3::before {{
+    content:""; flex:none; width:22px; height:10px; border-radius:4px 4px 2px 2px;
+    background:var(--green); box-shadow:0 3px 0 var(--edge); }}
+[data-testid="stHeadingWithActionElements"] h3::before {{ width:18px; height:8px; }}
+.ww-score [data-testid="stHeadingWithActionElements"] h3::before, .ww-card [data-testid="stHeadingWithActionElements"] h3::before,
+.ww-tag [data-testid="stHeadingWithActionElements"] h2::before {{ content:none; }}
+.ww-score h3::before, .ww-card h3::before, .ww-tag h2::before {{ content:none !important; }}
 
 /* ---------- Боковое меню ---------- */
-section[data-testid="stSidebar"] {{ background:{INK}; border-right:none; }}
+section[data-testid="stSidebar"] {{ background:var(--sidebar); border-right:none; }}
 section[data-testid="stSidebar"] * {{ color:#C9DCD2; }}
 section[data-testid="stSidebar"] h3 {{ color:{PAPER}; font-size:1.4rem; }}
+section[data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] * {{ color:#8FA79B !important; }}
 /* Пункты меню — крупные строки без кружков; активный подсвечен лаймом, как наклейка */
 section[data-testid="stSidebar"] [role="radiogroup"] {{ gap:4px; }}
 section[data-testid="stSidebar"] [role="radiogroup"] label {{
     padding:.55rem .85rem; border-radius:12px; width:100%; max-width:none; margin:0; border:2px solid transparent;
-    box-sizing:border-box;
-    transition:background .12s ease; }}
+    box-sizing:border-box; transition:background .12s ease; }}
 section[data-testid="stSidebar"] [role="radiogroup"] label > div > div:not([data-testid="stMarkdownContainer"]) {{
     display:none; }}
 section[data-testid="stSidebar"] [role="radiogroup"] label p {{ font-size:1rem; font-weight:500; }}
 section[data-testid="stSidebar"] [role="radiogroup"] label:hover {{ background:#1B3D2D; }}
 section[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {{
-    background:{LIME}; border-color:{LIME}; box-shadow:3px 3px 0 #000; }}
+    background:var(--lime); border-color:var(--lime); box-shadow:3px 3px 0 #000; }}
 section[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p {{ color:{INK}; font-weight:600; }}
 section[data-testid="stSidebar"] .stButton button {{
     background:transparent; border:1px solid #2C5443; color:#C9DCD2; width:100%; box-shadow:none; }}
+section[data-testid="stSidebar"] [data-testid="stAlert"] {{ background:#1B3D2D; border:none; box-shadow:none; }}
+section[data-testid="stSidebar"] [data-testid="stAlert"] * {{ color:var(--lime) !important; font-weight:600; }}
 .ww-logo {{ background:{SURFACE}; border-radius:16px; padding:10px; display:inline-block;
     transform:rotate(-2deg); box-shadow:4px 4px 0 #000; }}
 .ww-logo img {{ display:block; border-radius:8px; width:150px; }}
 
-/* ---------- Кнопки, вкладки, поля ---------- */
+/* ---------- Кнопки ---------- */
 .stButton button, .stFormSubmitButton button, .stDownloadButton button {{
-    border-radius:999px; font-weight:600; padding:.55rem 1.5rem; border:2px solid {INK};
-    background:{SURFACE}; color:{INK}; box-shadow:3px 3px 0 {INK};
+    border-radius:999px; font-weight:600; padding:.55rem 1.5rem; border:2px solid var(--edge);
+    background:var(--surface); color:var(--ink); box-shadow:3px 3px 0 var(--shadow);
     transition:transform .08s ease, box-shadow .08s ease; }}
+.stButton button p, .stFormSubmitButton button p {{ color:inherit !important; }}
 .stButton button:hover, .stFormSubmitButton button:hover, .stDownloadButton button:hover {{
-    transform:translate(-1px, -1px); box-shadow:4px 4px 0 {INK}; border-color:{INK}; color:{INK}; }}
+    transform:translate(-1px, -1px); box-shadow:4px 4px 0 var(--shadow); border-color:var(--edge); color:var(--ink); }}
 .stButton button:active, .stFormSubmitButton button:active {{
-    transform:translate(3px, 3px); box-shadow:0 0 0 {INK}; }}
-.stButton button[kind="primary"], .stFormSubmitButton button[kind="primary"] {{
-    background:{GREEN}; border-color:{INK}; color:#fff; }}
-.stButton button[kind="primary"]:hover, .stFormSubmitButton button[kind="primary"]:hover {{ color:#fff; }}
+    transform:translate(3px, 3px); box-shadow:0 0 0 var(--shadow); }}
+.stButton button[kind^="primary"], .stFormSubmitButton button[kind^="primary"] {{
+    background:var(--green); border-color:var(--edge); color:#fff; }}
+.stButton button[kind^="primary"]:hover, .stFormSubmitButton button[kind^="primary"]:hover {{ color:#fff; }}
+.stButton button:disabled {{ opacity:.55; box-shadow:none; transform:none; }}
 .stButton button:focus-visible, .stFormSubmitButton button:focus-visible {{
     outline:3px solid #8FD5AE; outline-offset:2px; }}
-.stTabs [data-baseweb="tab"] {{ font-weight:600; }}
-.stTabs [aria-selected="true"] {{ color:{GREEN}; }}
+
+/* ---------- Вкладки — переключатель-«таблетка» ---------- */
+[data-testid="stTabs"] [role="tablist"] {{ gap:6px; background:var(--surface); border:2px solid var(--edge);
+    border-radius:999px; padding:4px; width:fit-content; max-width:100%; box-shadow:3px 3px 0 var(--shadow);
+    margin-bottom:12px; }}
+[data-testid="stTab"] {{ border-radius:999px; padding:6px 18px; height:auto; background:transparent; }}
+[data-testid="stTab"] p {{ font-weight:600; color:var(--muted) !important; }}
+[data-testid="stTab"][aria-selected="true"] {{ background:var(--green); }}
+[data-testid="stTab"][aria-selected="true"] p {{ color:#fff !important; }}
+[data-testid="stTabs"] .react-aria-SelectionIndicator {{ display:none; }}
+[data-testid="stTabs"] [role="tablist"]::after, [data-testid="stTabs"] [role="tablist"]::before {{ display:none; }}
+
+/* ---------- Поля ввода и выпадающие списки ---------- */
+[data-testid="stTextInputRootElement"], [data-testid="stSelectbox"] [role="group"], [data-testid="stTextArea"] textarea {{
+    background:var(--surface) !important; border:2px solid var(--edge) !important; border-radius:12px !important; }}
+[data-testid="stTextInputField"], [data-testid="stSelectbox"] input, [data-testid="stTextArea"] textarea {{
+    color:var(--ink) !important; -webkit-text-fill-color:var(--ink); background:transparent !important; }}
+[data-testid="stTextInputField"]::placeholder {{ color:var(--muted) !important; -webkit-text-fill-color:var(--muted); }}
+[data-testid="stTextInputRootElement"]:focus-within, [data-testid="stSelectbox"] [role="group"]:focus-within {{
+    border-color:var(--green) !important; box-shadow:3px 3px 0 var(--green); }}
+[data-testid="stTextInputRootElement"] button, [data-testid="stSelectbox"] button {{ background:transparent !important;
+    color:var(--muted) !important; }}
+[role="listbox"] {{ background:var(--surface) !important; border:2px solid var(--edge); border-radius:12px; }}
+[role="listbox"] [role="option"], [role="listbox"] [role="option"] * {{ color:var(--ink) !important; }}
+[role="listbox"] [role="option"]:hover, [role="listbox"] [role="option"][data-focused],
+[role="listbox"] [role="option"][aria-selected="true"] {{ background:var(--mint) !important; }}
+
+/* Переключатели (тема, камера) */
+[data-testid="stCheckbox"] label > div:first-of-type {{ background:var(--track) !important; border:2px solid var(--edge); }}
+[data-testid="stCheckbox"] label:has(input:checked) > div:first-of-type {{ background:var(--green) !important; }}
+[data-testid="stCheckbox"] label > div:first-of-type > div {{ background:#fff !important; }}
+section[data-testid="stSidebar"] [data-testid="stCheckbox"] label > div:first-of-type {{
+    background:#2C5443 !important; border-color:#2C5443; }}
+section[data-testid="stSidebar"] [data-testid="stCheckbox"] label:has(input:checked) > div:first-of-type {{
+    background:var(--lime) !important; border-color:var(--lime); }}
+section[data-testid="stSidebar"] [data-testid="stCheckbox"] label:has(input:checked) > div:first-of-type > div {{
+    background:{INK} !important; }}
+section[data-testid="stSidebar"] [data-testid="stCheckbox"] {{ margin:10px 0 4px; }}
 
 /* Загрузка фото: большая зона с пунктиром — сразу видно, куда тянуть файл */
 [data-testid="stFileUploaderDropzone"] {{
-    background:{SURFACE}; border:2px dashed {INK}; border-radius:18px; padding:32px 26px;
+    background:var(--surface); border:2px dashed var(--edge); border-radius:18px; padding:32px 26px;
     box-shadow:{STICKER}; }}
-[data-testid="stFileUploaderDropzone"]:hover {{ background:#F1FAE0; }}
+[data-testid="stFileUploaderDropzone"]:hover {{ background:var(--mint); }}
+[data-testid="stFileUploaderDropzone"] * {{ color:var(--ink); }}
+[data-testid="stFileUploaderDropzone"] button {{ border:2px solid var(--edge); background:var(--bg);
+    border-radius:999px; color:var(--ink); }}
+[data-testid="stFileUploaderFile"] * {{ color:var(--ink); }}
 
-/* Варианты ответов (викторина, режимы) — крупные строки, на которые удобно нажимать с телефона */
+/* Варианты ответов (викторина) — крупные строки, на которые удобно нажимать с телефона */
 [data-testid="stMain"] [role="radiogroup"] {{ gap:8px; }}
 [data-testid="stMain"] [role="radiogroup"] label {{
-    background:{SURFACE}; border:1px solid {LINE}; border-radius:12px; padding:9px 14px;
-    margin:0; width:100%; }}
+    background:var(--surface); border:2px solid var(--edge); border-radius:12px; padding:10px 14px;
+    margin:0; width:100%; transition:transform .08s ease, box-shadow .08s ease; }}
 [data-testid="stMain"] [role="radiogroup"][aria-orientation="vertical"] > label {{
     width:100%; max-width:680px; box-sizing:border-box; }}
 [data-testid="stMain"] [role="radiogroup"][aria-orientation="horizontal"] > label {{ width:auto; }}
 [data-testid="stMain"] [data-testid="stRadio"] [data-testid="stWidgetLabel"] p {{
-    font-size:1.05rem; font-weight:600; line-height:1.4; }}
-/* Рамки (st.container(border=True)) и формы — мягче и круглее, как карточки */
-[data-testid="stMain"] [data-testid="stVerticalBlock"] {{ border-radius:18px; border-color:#D9E1DB; }}
-[data-testid="stForm"] {{ background:{SURFACE}; border:1px solid {LINE}; border-radius:18px; padding:22px 22px 18px; }}
-[data-testid="stMain"] [role="radiogroup"] label:hover {{ border-color:#B9D3C4; }}
+    font-family:'Rubik', sans-serif; font-size:1.15rem; font-weight:600; line-height:1.35; margin-bottom:6px; }}
+[data-testid="stMain"] [role="radiogroup"] label:hover {{ transform:translate(-1px, -1px);
+    box-shadow:3px 3px 0 var(--shadow); }}
 [data-testid="stMain"] [role="radiogroup"] label:has(input:checked) {{
-    border-color:{GREEN}; background:#EEF7F1; }}
+    background:var(--lime); border-color:{INK}; box-shadow:3px 3px 0 var(--shadow); }}
+[data-testid="stMain"] [role="radiogroup"] label:has(input:checked) * {{ color:{INK} !important; font-weight:600; }}
+[data-testid="stMain"] [role="radiogroup"] label:has(input:disabled) {{ transform:none; box-shadow:none; }}
 
-/* Сообщения Streamlit (предупреждения, подсказки) — в тон сайту */
-[data-testid="stAlert"] {{ border-radius:14px; }}
-[data-testid="stExpander"] details {{ border-radius:14px; border-color:{LINE}; background:{SURFACE}; }}
+/* Рамки (st.container(border=True)), формы, раскрывашки — «наклейки» */
+/* Только контейнеры с key="wwbox_…" (в app.py) — у обычного st.container() рамки нет, а в CSS их не отличить */
+[data-testid="stMain"] [class*="st-key-wwbox"] {{ padding:18px 20px;
+    border:2px solid var(--edge) !important; border-radius:18px; background:var(--surface);
+    box-shadow:{STICKER}; }}
+[data-testid="stForm"] {{ background:var(--surface); border:2px solid var(--edge); border-top:12px solid var(--green);
+    border-radius:18px; padding:22px 22px 20px; box-shadow:{STICKER}; }}
+[data-testid="stExpander"] details {{ border:2px solid var(--edge) !important; border-radius:14px;
+    background:var(--surface); box-shadow:3px 3px 0 var(--shadow); }}
+[data-testid="stExpander"] summary * {{ color:var(--ink); font-weight:600; }}
+[data-testid="stExpander"] summary:hover * {{ color:var(--green); }}
+
+/* Сообщения Streamlit — плашки с толстой полосой слева по смыслу */
+[data-testid="stAlert"] {{ border-radius:14px; border:2px solid var(--edge); border-left-width:8px;
+    background:var(--surface); }}
+[data-testid="stAlert"] > div {{ background:transparent !important; }}
+[data-testid="stAlert"] * {{ color:var(--ink) !important; }}
+[data-testid="stAlert"]:has([data-testid="stAlertContentInfo"]) {{ border-left-color:#1565C0; background:var(--surface); }}
+[data-testid="stAlert"]:has([data-testid="stAlertContentWarning"]) {{ border-left-color:var(--amber); background:var(--warm); }}
+[data-testid="stAlert"]:has([data-testid="stAlertContentError"]) {{ border-left-color:#C62828; background:var(--rose); }}
+[data-testid="stAlert"]:has([data-testid="stAlertContentSuccess"]) {{ border-left-color:var(--green); background:var(--mint); }}
+
+/* Полоса прогресса — толстая, как столбики */
+[data-testid="stProgress"] [role="progressbar"] > div {{ height:14px; border-radius:7px; background:var(--track);
+    border:2px solid var(--edge); }}
+[data-testid="stProgress"] [role="progressbar"] > div > div {{ border-radius:5px; }}
+[data-testid="stProgress"] [role="progressbar"] > div > div > div {{ background:var(--green); border-radius:5px; }}
+
+/* Всплывашки и подсказки */
+[data-testid="stToast"] {{ background:var(--surface); border:2px solid var(--edge); box-shadow:{STICKER}; }}
+[data-testid="stToast"] * {{ color:var(--ink); }}
+[data-testid="stSpinner"] * {{ color:var(--ink); }}
 
 /* ---------- Метрики ---------- */
 /* Числа на главной — тёмная плитка с лаймовым числом, как табло на станции */
 [data-testid="stMetric"] {{
-    background:{INK}; border:2px solid {INK}; border-radius:18px; padding:20px 24px;
-    box-shadow:4px 4px 0 {GREEN}; }}
-[data-testid="stMetricValue"] {{
-    font-family:'Rubik', sans-serif; font-weight:700; color:{LIME}; font-size:2.6rem; }}
-[data-testid="stMetricLabel"] p {{ color:#C9DCD2; font-size:.95rem; }}
+    background:var(--panel); border:2px solid var(--edge); border-radius:18px; padding:20px 24px;
+    box-shadow:4px 4px 0 var(--green); }}
+[data-testid="stMetricValue"], [data-testid="stMetricValue"] * {{
+    font-family:'Rubik', sans-serif; font-weight:700; color:var(--lime) !important; font-size:2.6rem; }}
+[data-testid="stMetricLabel"] p {{ color:#C9DCD2 !important; font-size:.95rem; }}
 
 /* ---------- Главная ---------- */
 .ww-hero {{
-    position:relative; border-radius:24px; overflow:hidden; background:{INK};
-    border:2px solid {INK}; box-shadow:6px 6px 0 {GREEN};
+    position:relative; border-radius:24px; overflow:hidden; background:var(--panel);
+    border:2px solid var(--edge); box-shadow:6px 6px 0 var(--green);
     display:grid; grid-template-columns:minmax(0, 1.15fr) minmax(0, .85fr); margin:8px 0 38px; }}
 .ww-hero-text {{ padding:56px 48px 40px; display:flex; flex-direction:column; gap:16px; }}
 .ww-hero h1 {{ color:#fff; font-size:clamp(2rem, 4vw, 3.5rem); line-height:1.14; letter-spacing:-.03em;
     margin:0; padding:0; max-width:14ch; }}
-.ww-hero h1 mark {{ background:{LIME}; color:{INK}; padding:0 .16em; border-radius:10px; line-height:1;
+.ww-hero h1 mark {{ background:var(--lime); color:{INK}; padding:0 .16em; border-radius:10px; line-height:1;
     box-decoration-break:clone; -webkit-box-decoration-break:clone; }}
-.ww-hero p {{ color:#D9E8DF; font-size:clamp(1rem, 1.3vw, 1.15rem); margin:0; max-width:44ch; line-height:1.55; }}
-.ww-hero .ww-eyebrow {{ align-self:flex-start; color:{INK}; background:#8FD5AE; font-weight:600; font-size:.85rem;
+.ww-hero p {{ color:#D9E8DF !important; font-size:clamp(1rem, 1.3vw, 1.15rem); margin:0; max-width:44ch; line-height:1.55; }}
+.ww-hero .ww-eyebrow {{ align-self:flex-start; color:{INK} !important; background:#8FD5AE; font-weight:600; font-size:.85rem;
     border-radius:999px; padding:5px 14px; margin:0; }}
 .ww-hero-art {{ background-size:cover; background-position:center; min-height:320px;
-    border-left:2px solid {INK}; }}
+    border-left:2px solid var(--edge); }}
 /* Ряд баков внизу героя: крышка, корпус цвета бака и подпись — фирменный приём крупно */
 .ww-bins {{ grid-column:1 / -1; display:grid; grid-template-columns:repeat(7, 1fr); gap:10px;
-    padding:22px 28px 26px; background:#0B1F16; border-top:2px solid #000; }}
+    padding:22px 28px 26px; background:rgba(0,0,0,.28); border-top:2px solid #000; }}
 .ww-bin {{ display:flex; flex-direction:column; align-items:center; gap:7px; min-width:0; }}
 .ww-bin i {{ display:block; width:100%; height:9px; border-radius:6px 6px 2px 2px; background:var(--c);
     filter:brightness(1.25); }}
@@ -145,62 +260,65 @@ section[data-testid="stSidebar"] .stButton button {{
 
 .ww-grid {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:20px;
     margin-bottom:26px; }}
-.ww-card {{ position:relative; background:{SURFACE}; border:2px solid {INK}; border-top:12px solid var(--c, {GREEN});
+.ww-card {{ position:relative; background:var(--surface); border:2px solid var(--edge); border-top:12px solid var(--c, {GREEN});
     border-radius:18px; padding:24px 24px 26px; display:flex; flex-direction:column; gap:10px;
     box-shadow:{STICKER}; }}
 .ww-card h3 {{ margin:0; font-size:1.3rem; }}
-.ww-card p {{ margin:0; color:{MUTED}; font-size:.98rem; line-height:1.5; }}
+.ww-card p {{ margin:0; color:var(--muted) !important; font-size:.98rem; line-height:1.5; }}
 .ww-num {{ font-family:'Rubik', sans-serif; font-size:1rem; font-weight:700; color:#fff; line-height:1;
     background:var(--c, {GREEN}); align-self:flex-start; border-radius:999px; padding:7px 12px; }}
 
-.ww-quote {{ position:relative; background:#FFF4E6; border:2px solid {INK}; border-radius:18px;
-    padding:26px 30px 26px 84px; color:{INK}; font-size:1.12rem; line-height:1.6; box-shadow:4px 4px 0 {AMBER}; }}
+.ww-quote {{ position:relative; background:var(--warm); border:2px solid var(--edge); border-radius:18px;
+    padding:26px 30px 26px 84px; color:var(--ink); font-size:1.12rem; line-height:1.6; box-shadow:4px 4px 0 var(--amber); }}
 .ww-quote::before {{ content:"“"; position:absolute; left:24px; top:6px; font-family:'Rubik', sans-serif;
-    font-size:5rem; font-weight:700; color:{AMBER}; line-height:1; }}
+    font-size:5rem; font-weight:700; color:var(--amber); line-height:1; }}
 
-.ww-chip {{ display:inline-block; background:#EAF5EF; color:{GREEN}; font-weight:600;
+.ww-chip {{ display:inline-block; background:var(--mint); color:var(--green); font-weight:600;
     border-radius:999px; padding:4px 14px; font-size:.85rem; }}
 
 .ww-foot {{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }}
 .ww-foot a {{ display:inline-flex; align-items:center; gap:7px; text-decoration:none;
-    color:{GREEN}; font-weight:600; font-size:.9rem; border:1px solid {GREEN};
+    color:var(--green); font-weight:600; font-size:.9rem; border:2px solid var(--green);
     border-radius:999px; padding:5px 14px; }}
 section[data-testid="stSidebar"] .ww-foot a {{ color:#8FD5AE; border-color:#2C5443; }}
 
-/* ---------- Заголовок внутренних страниц: название + полоса из цветов баков ---------- */
-.ww-head {{ margin:0 0 6px; }}
-.ww-head h1 {{ font-size:clamp(2.1rem, 4vw, 3.2rem); line-height:1.04; letter-spacing:-.03em; margin:0; padding:0; }}
-.ww-head p {{ color:{MUTED}; font-size:1.05rem; margin:10px 0 0; max-width:60ch; line-height:1.5; }}
-.ww-stripe {{ display:flex; gap:6px; margin:18px 0 18px; max-width:340px; }}
-.ww-stripe span {{ flex:1; height:12px; border-radius:5px 5px 2px 2px; box-shadow:0 3px 0 {INK}; }}
+/* ---------- Заголовок внутренних страниц: тёмная плашка, как герой главной, и «крышки» баков ---------- */
+.ww-head {{ background:var(--panel); border:2px solid var(--edge); border-radius:22px; padding:30px 32px 0;
+    box-shadow:5px 5px 0 var(--green); margin:8px 0 22px; overflow:hidden; }}
+.ww-head h1 {{ color:#fff; font-size:clamp(1.9rem, 3.6vw, 2.9rem); line-height:1.06; letter-spacing:-.03em;
+    margin:0; padding:0; }}
+.ww-head p {{ color:#D9E8DF !important; font-size:1.05rem; margin:10px 0 0; max-width:60ch; line-height:1.5; }}
+.ww-head:not(:has(.ww-stripe)) {{ padding-bottom:28px; }}
+.ww-stripe {{ display:flex; gap:8px; margin:22px 0 0; max-width:420px; }}
+.ww-stripe span {{ flex:1; height:16px; border-radius:6px 6px 0 0; }}
 
 /* Типы отходов: цветные «крышки» */
-.ww-types {{ display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 4px; }}
-.ww-type {{ display:inline-flex; align-items:center; gap:6px; background:{SURFACE};
-    border:2px solid {INK}; border-top:7px solid var(--c); border-radius:10px;
+.ww-types {{ display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 10px; }}
+.ww-type {{ display:inline-flex; align-items:center; gap:6px; background:var(--surface); color:var(--ink);
+    border:2px solid var(--edge); border-top:7px solid var(--c); border-radius:10px;
     padding:6px 12px 7px; font-size:.9rem; font-weight:500; }}
-.ww-type.off {{ border-top-color:#D5D9D3; color:#8A968F; }}
+.ww-type.off {{ border-top-color:var(--line); color:var(--off); border-style:dashed; border-top-style:solid; }}
 .ww-type.off small {{ font-size:.75rem; }}
 
 /* ---------- Ответ модели: бирка цвета бака ---------- */
-.ww-tag {{ position:relative; background:var(--c); color:#fff; border-radius:20px; border:2px solid {INK};
+.ww-tag {{ position:relative; background:var(--c); color:#fff; border-radius:20px; border:2px solid var(--edge);
     padding:24px 26px 22px 54px; margin-bottom:16px; box-shadow:{STICKER}; }}
 .ww-tag::before {{ content:""; position:absolute; left:20px; top:30px; width:16px; height:16px;
-    border-radius:50%; background:{PAPER}; box-shadow:inset 0 0 0 3px rgba(0,0,0,.18); }}
+    border-radius:50%; background:var(--bg); box-shadow:inset 0 0 0 3px rgba(0,0,0,.18); }}
 .ww-tag h2 {{ color:#fff; margin:0; padding:0; font-size:clamp(1.6rem, 2.6vw, 2.2rem); line-height:1.1; }}
 .ww-tag .ww-tag-emoji {{ font-size:1.6rem; margin-right:6px; }}
 .ww-meter {{ height:10px; background:rgba(255,255,255,.28); border-radius:5px; margin:16px 0 8px;
     overflow:hidden; }}
 .ww-meter div {{ height:100%; background:#fff; border-radius:5px; }}
-.ww-tag p {{ margin:0; color:rgba(255,255,255,.92); font-size:.95rem; }}
+.ww-tag p {{ margin:0; color:rgba(255,255,255,.92) !important; font-size:.95rem; }}
 
-.ww-block {{ background:{SURFACE}; border:2px solid {INK}; border-radius:16px; padding:16px 20px;
+.ww-block {{ background:var(--surface); border:2px solid var(--edge); border-radius:16px; padding:16px 20px;
     margin-bottom:12px; }}
-.ww-block-title {{ font-family:'Rubik', sans-serif; font-weight:600; font-size:1rem; margin:0 0 6px; color:{INK}; }}
-.ww-block p {{ margin:0; color:{INK}; line-height:1.55; }}
-.ww-block.warn {{ border-left:8px solid {AMBER}; background:#FFF4E6; }}
-.ww-block.fact {{ background:#EEF5F0; border-style:dashed; }}
-.ww-block.fact p {{ color:{MUTED}; }}
+.ww-block-title {{ font-family:'Rubik', sans-serif; font-weight:600; font-size:1rem; margin:0 0 6px; color:var(--ink); }}
+.ww-block p {{ margin:0; color:var(--ink); line-height:1.55; }}
+.ww-block.warn {{ border-left:8px solid var(--amber); background:var(--warm); }}
+.ww-block.fact {{ background:var(--mint); border-style:dashed; }}
+.ww-block.fact p {{ color:var(--muted) !important; }}
 .ww-steps {{ list-style:none; counter-reset:s; margin:4px 0 0; padding:0; }}
 .ww-steps li {{ counter-increment:s; position:relative; padding:4px 0 4px 34px; line-height:1.5; }}
 .ww-steps li::before {{ content:counter(s); position:absolute; left:0; top:4px; width:23px; height:23px;
@@ -211,93 +329,107 @@ section[data-testid="stSidebar"] .ww-foot a {{ color:#8FD5AE; border-color:#2C54
 .ww-bars {{ display:flex; flex-direction:column; gap:10px; margin-bottom:22px; }}
 .ww-bar-top {{ display:flex; justify-content:space-between; gap:12px; font-size:.95rem; margin-bottom:4px; }}
 .ww-bar-top b {{ font-weight:600; }}
-.ww-bar-top span {{ color:{MUTED}; white-space:nowrap; }}
-.ww-bar-track {{ height:10px; background:#E9ECE6; border-radius:5px; overflow:hidden; }}
-.ww-bar-track div {{ height:100%; border-radius:5px; }}
+.ww-bar-top span {{ color:var(--muted); white-space:nowrap; }}
+.ww-bar-track {{ height:12px; background:var(--track); border-radius:6px; overflow:hidden; }}
+.ww-bar-track div {{ height:100%; border-radius:6px; }}
+
+/* ---------- Таблица (история в профиле) ---------- */
+.ww-table {{ width:100%; border-collapse:collapse; font-size:.92rem; }}
+.ww-table th {{ text-align:left; color:var(--muted); font-weight:600; padding:8px 10px;
+    border-bottom:2px solid var(--edge); }}
+.ww-table td {{ padding:8px 10px; border-bottom:1px solid var(--line); color:var(--ink); }}
+.ww-table tr:last-child td {{ border-bottom:none; }}
 
 /* ---------- Рейтинг ---------- */
-.ww-rules {{ display:flex; flex-wrap:wrap; gap:10px; margin:4px 0 6px; }}
-.ww-rule {{ background:{SURFACE}; border:2px solid {INK}; border-radius:12px; padding:8px 14px;
-    font-size:.92rem; }}
-.ww-rule b {{ font-family:'Rubik', sans-serif; color:{GREEN}; font-size:1.05rem; margin-right:4px; }}
+.ww-rules {{ display:flex; flex-wrap:wrap; gap:10px; margin:4px 0 14px; }}
+.ww-rule {{ background:var(--surface); border:2px solid var(--edge); border-radius:12px; padding:8px 14px;
+    font-size:.92rem; color:var(--ink); }}
+.ww-rule b {{ font-family:'Rubik', sans-serif; color:var(--green); font-size:1.05rem; margin-right:4px; }}
 
 .ww-podium {{ display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; align-items:end;
     margin:10px 0 18px; }}
-.ww-step {{ background:{SURFACE}; border:2px solid {INK}; border-radius:18px 18px 10px 10px; box-shadow:{STICKER};
+.ww-step {{ background:var(--surface); border:2px solid var(--edge); border-radius:18px 18px 10px 10px; box-shadow:{STICKER};
     padding:16px 12px; text-align:center; display:flex; flex-direction:column; gap:4px;
     justify-content:flex-end; min-width:0; }}
-.ww-step.p1 {{ min-height:210px; border-top:6px solid #E3B33B; }}
-.ww-step.p2 {{ min-height:175px; border-top:6px solid #AEB7BF; }}
-.ww-step.p3 {{ min-height:150px; border-top:6px solid #C98A55; }}
+.ww-step.p1 {{ min-height:210px; border-top:10px solid #E3B33B; }}
+.ww-step.p2 {{ min-height:175px; border-top:10px solid #AEB7BF; }}
+.ww-step.p3 {{ min-height:150px; border-top:10px solid #C98A55; }}
 .ww-step .medal {{ font-size:2rem; line-height:1; }}
 .ww-step .ww-you {{ display:inline-block; margin:4px 0 0; }}
 .ww-step b {{ font-family:'Rubik', sans-serif; font-size:1.05rem; overflow-wrap:anywhere; }}
-.ww-step small {{ color:{MUTED}; overflow-wrap:anywhere; }}
-.ww-step .pts {{ font-family:'Rubik', sans-serif; font-weight:600; color:{GREEN}; font-size:1.35rem; }}
-.ww-step.me, .ww-row.me {{ background:#EEF7F1; border-color:{GREEN}; }}
+.ww-step small {{ color:var(--muted); overflow-wrap:anywhere; }}
+.ww-step .pts {{ font-family:'Rubik', sans-serif; font-weight:700; color:var(--green); font-size:1.5rem; }}
+.ww-step.me, .ww-row.me {{ background:var(--mint); border-color:var(--green); }}
 
 .ww-rows {{ display:flex; flex-direction:column; gap:8px; }}
 .ww-row {{ display:grid; grid-template-columns:42px 1fr auto; align-items:center; gap:12px;
-    background:{SURFACE}; border:1px solid {LINE}; border-radius:14px; padding:10px 16px; }}
-.ww-row .pos {{ font-family:'Rubik', sans-serif; font-weight:600; color:{MUTED}; text-align:center; }}
+    background:var(--surface); border:2px solid var(--edge); border-radius:14px; padding:10px 16px; }}
+.ww-row .pos {{ font-family:'Rubik', sans-serif; font-weight:700; color:var(--muted); text-align:center; }}
 .ww-row .who {{ min-width:0; }}
 .ww-row .who b {{ display:block; overflow-wrap:anywhere; }}
-.ww-row .who small {{ color:{MUTED}; overflow-wrap:anywhere; }}
-.ww-row .pts {{ font-family:'Rubik', sans-serif; font-weight:600; color:{GREEN}; }}
-.ww-you {{ font-size:.75rem; font-weight:600; color:{GREEN}; background:#DDF0E5; border-radius:999px;
+.ww-row .who small {{ color:var(--muted); overflow-wrap:anywhere; }}
+.ww-row .pts {{ font-family:'Rubik', sans-serif; font-weight:700; color:var(--green); }}
+.ww-you {{ font-size:.75rem; font-weight:600; color:{INK}; background:var(--lime); border-radius:999px;
     padding:1px 8px; margin-left:6px; vertical-align:middle; }}
 
 /* ---------- Викторина ---------- */
-.ww-qnum {{ font-family:'Rubik', sans-serif; font-weight:600; color:{GREEN}; font-size:.9rem; }}
-.ww-score {{ background:{INK}; color:#fff; border-radius:20px; padding:26px 28px; margin:6px 0 16px;
-    box-shadow:6px 6px 0 {GREEN};
+.ww-qnum {{ display:inline-block; font-family:'Rubik', sans-serif; font-weight:700; color:#fff; font-size:.85rem;
+    background:var(--c, {GREEN}); border-radius:999px; padding:4px 12px; margin-bottom:6px; }}
+.ww-score {{ background:var(--panel); color:#fff; border:2px solid var(--edge); border-radius:20px; padding:26px 28px;
+    margin:6px 0 16px; box-shadow:6px 6px 0 var(--green);
     display:flex; align-items:center; gap:22px; flex-wrap:wrap; }}
-.ww-score .big {{ font-family:'Rubik', sans-serif; font-size:3.4rem; font-weight:700; line-height:1; color:{LIME}; }}
+.ww-score .big {{ font-family:'Rubik', sans-serif; font-size:3.4rem; font-weight:700; line-height:1; color:var(--lime); }}
 .ww-score h3 {{ color:#fff; margin:0 0 4px; font-size:1.3rem; }}
-.ww-score p {{ margin:0; color:#C9DCD2; }}
-.ww-review {{ background:{SURFACE}; border:1px solid {LINE}; border-left:5px solid var(--c);
-    border-radius:12px; padding:12px 16px; margin-bottom:8px; line-height:1.5; }}
-.ww-review small {{ color:{MUTED}; display:block; margin-top:3px; }}
+.ww-score p {{ margin:0; color:#C9DCD2 !important; }}
+.ww-review {{ background:var(--surface); border:2px solid var(--edge); border-left:8px solid var(--c);
+    border-radius:12px; padding:12px 16px; margin-bottom:8px; line-height:1.5; color:var(--ink); }}
+.ww-review small {{ color:var(--muted); display:block; margin-top:3px; }}
 
 /* ---------- Профиль ---------- */
-.ww-me {{ display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-bottom:8px; }}
-.ww-avatar {{ width:72px; height:72px; border-radius:50%; background:{LIME}; color:{INK}; border:2px solid {INK};
-    box-shadow:3px 3px 0 {INK};
+.ww-me {{ display:flex; align-items:center; gap:18px; flex-wrap:wrap; background:var(--panel);
+    border:2px solid var(--edge); border-radius:22px; padding:24px 28px; box-shadow:5px 5px 0 var(--green);
+    margin:8px 0 18px; }}
+.ww-avatar {{ width:72px; height:72px; border-radius:50%; background:var(--lime); color:{INK}; border:2px solid #000;
+    box-shadow:3px 3px 0 #000;
     font-family:'Rubik', sans-serif; font-size:2rem; font-weight:600; display:flex;
     align-items:center; justify-content:center; flex:none; }}
-.ww-me h1 {{ margin:0; padding:0; font-size:clamp(1.8rem, 3.4vw, 2.6rem); line-height:1.1; }}
-.ww-me p {{ margin:4px 0 0; color:{MUTED}; }}
-.ww-level {{ background:{SURFACE}; border:2px solid {INK}; border-radius:18px; padding:18px 22px; box-shadow:{STICKER};
+.ww-me h1 {{ margin:0; padding:0; font-size:clamp(1.8rem, 3.4vw, 2.6rem); line-height:1.1; color:#fff; }}
+.ww-me p {{ margin:4px 0 0; color:#C9DCD2 !important; }}
+.ww-level {{ background:var(--surface); border:2px solid var(--edge); border-radius:18px; padding:18px 22px; box-shadow:{STICKER};
     margin:10px 0 16px; }}
 .ww-level-top {{ display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; }}
 .ww-level-top b {{ font-family:'Rubik', sans-serif; font-size:1.25rem; }}
-.ww-level-top span {{ color:{MUTED}; font-size:.92rem; }}
-.ww-level .ww-bar-track {{ margin-top:10px; height:12px; border-radius:6px; }}
-.ww-level .ww-bar-track div {{ background:{GREEN}; }}
+.ww-level-top span {{ color:var(--muted); font-size:.92rem; }}
+.ww-level .ww-bar-track {{ margin-top:10px; height:14px; border-radius:7px; }}
+.ww-level .ww-bar-track div {{ background:var(--green); }}
 .ww-stats {{ display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin:0 0 22px; }}
-.ww-stat {{ background:{SURFACE}; border:1px solid {LINE}; border-radius:16px; padding:14px 18px; min-width:0; }}
-.ww-stat b {{ display:block; font-family:'Rubik', sans-serif; font-weight:600; color:{GREEN};
+.ww-stat {{ background:var(--surface); border:2px solid var(--edge); border-radius:16px; padding:14px 18px; min-width:0;
+    box-shadow:3px 3px 0 var(--shadow); }}
+.ww-stat b {{ display:block; font-family:'Rubik', sans-serif; font-weight:700; color:var(--green);
     font-size:clamp(1.4rem, 3vw, 2rem); line-height:1.1; }}
-.ww-stat span {{ color:{MUTED}; font-size:.88rem; }}
-.ww-history {{ display:flex; flex-direction:column; gap:8px; }}
+.ww-stat span {{ color:var(--muted); font-size:.88rem; }}
+.ww-history {{ display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }}
 .ww-hist {{ display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:center;
-    background:{SURFACE}; border:1px solid {LINE}; border-left:5px solid var(--c); border-radius:12px;
-    padding:10px 14px; }}
+    background:var(--surface); border:2px solid var(--edge); border-left:8px solid var(--c); border-radius:12px;
+    padding:10px 14px; color:var(--ink); }}
 .ww-hist .em {{ font-size:1.4rem; }}
 .ww-hist b {{ display:block; }}
-.ww-hist small {{ color:{MUTED}; }}
-.ww-hist .when {{ color:{MUTED}; font-size:.85rem; text-align:right; white-space:nowrap; }}
+.ww-hist small {{ color:var(--muted); }}
+.ww-hist .when {{ color:var(--muted); font-size:.85rem; text-align:right; white-space:nowrap; }}
 
-.ww-empty {{ background:{SURFACE}; border:2px dashed {INK}; border-radius:16px; padding:24px;
-    color:{MUTED}; }}
-.ww-empty b {{ color:{INK}; }}
+.ww-empty {{ background:var(--surface); border:2px dashed var(--edge); border-radius:16px; padding:24px;
+    color:var(--muted); }}
+.ww-empty b {{ color:var(--ink); }}
 
 @media (max-width: 640px) {{
-    .ww-hero {{ grid-template-columns:1fr; box-shadow:4px 4px 0 {GREEN}; }}
+    .ww-hero {{ grid-template-columns:1fr; box-shadow:4px 4px 0 var(--green); }}
     .ww-hero-text {{ padding:30px 22px 22px; }}
-    .ww-hero-art {{ min-height:190px; border-left:none; border-top:2px solid {INK}; }}
+    .ww-hero-art {{ min-height:190px; border-left:none; border-top:2px solid var(--edge); }}
     .ww-bins {{ grid-template-columns:repeat(4, 1fr); gap:12px 8px; padding:18px 16px 20px; }}
     .ww-bin b {{ height:38px; font-size:1.15rem; }}
+    .ww-head {{ padding:22px 20px 0; box-shadow:4px 4px 0 var(--green); }}
+    .ww-head:not(:has(.ww-stripe)) {{ padding-bottom:20px; }}
+    .ww-me {{ padding:18px 18px; }}
     .ww-quote {{ padding:22px 20px 20px 62px; font-size:1.02rem; }}
     .ww-quote::before {{ left:14px; font-size:4rem; }}
     .ww-podium {{ gap:6px; }}
@@ -320,6 +452,12 @@ def esc(value):
 def inject():
     """Подключить оформление. Вызывается один раз в начале app.py."""
     st.markdown(CSS, unsafe_allow_html=True)
+
+
+def theme(dark):
+    """Тёмная тема: подменить значения цветовых переменных. Вызывается после переключателя в меню."""
+    if dark:
+        st.markdown(f"<style>:root {{ {_vars(DARK)} }}</style>", unsafe_allow_html=True)
 
 
 def _html(markup):
@@ -388,6 +526,13 @@ def bars(rows, max_value=None):
         for label, value, note, color in rows
     )
     _html(f'<div class="ww-bars">{markup}</div>')
+
+
+def table(columns, rows):
+    """Простая таблица в стиле сайта (st.dataframe рисуется на canvas и не меняет цвета с темой)."""
+    head = "".join(f"<th>{esc(c)}</th>" for c in columns)
+    body = "".join("<tr>" + "".join(f"<td>{esc(v)}</td>" for v in row) + "</tr>" for row in rows)
+    _html(f'<table class="ww-table"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>')
 
 
 def empty(title, text):
@@ -463,8 +608,9 @@ def ranking(rows, start=4, me_id=None):
 
 # ---------- Викторина ----------
 
-def question_number(i, total):
-    _html(f'<div class="ww-qnum">Вопрос {i} из {total}</div>')
+def question_number(i, total, color=GREEN):
+    """Номер вопроса — бейдж; цвет меняется от вопроса к вопросу (цвета баков)."""
+    _html(f'<div class="ww-qnum" style="--c:{color}">Вопрос {i} из {total}</div>')
 
 
 def score(correct, total, title, text):
