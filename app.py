@@ -6,6 +6,7 @@ import base64
 import logging
 import os
 import hashlib
+import importlib
 import uuid
 from pathlib import Path
 
@@ -20,6 +21,11 @@ from core.model import DETECTOR_PATH, check_scene, classify, load_image, load_mo
 from core.pg import connection_hint
 from core.quiz import random_questions
 from core import assistant, storage, ui
+
+# Streamlit Cloud после обновления кода перезапускает app.py, но модули из core/ держит в памяти старыми —
+# новый CSS не появлялся, а новые функции падали с «has no attribute». ui.py — только оформление
+# без состояния, поэтому его безопасно перечитывать при каждом запуске (это быстро).
+ui = importlib.reload(ui)
 
 ROOT = Path(__file__).resolve().parent
 
