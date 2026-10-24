@@ -1,4 +1,4 @@
-"""Режим для школ: QR-коды на баках, отчёт учителя, роли, эко-карта и казахский интерфейс."""
+"""Режим для школ: QR-коды на баках, отчёт учителя, роли и казахский интерфейс."""
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -62,7 +62,7 @@ def test_csv_opens_in_excel():
     assert lines[2].endswith("нет") and "GLASS" in lines[2]
 
 
-# ---------- База: роли, сканы школы, эко-карта (SQLite и Postgres) ----------
+# ---------- База: роли и сканы школы (SQLite и Postgres) ----------
 
 def test_roles_and_school_scans(store):
     db.register_user(store, "teacher1", "secret1", "Учитель", class_label=" 7 а ")
@@ -81,18 +81,6 @@ def test_roles_and_school_scans(store):
     assert [(r[1], r[2], r[4]) for r in rows] == [(None, "glass", "plastic"), ("7А", "plastic", "plastic")]
     assert db.school_scans(store, "nis_astana", NOW + timedelta(days=1)) == []
     assert db.school_ids(store) == ["nis_astana", "other_school"]
-
-
-def test_eco_points(store):
-    assert db.add_eco_point(store, "", "batteries", "", "", 51.1, 71.4) == (False, "Укажите название пункта.")
-    assert not db.add_eco_point(store, "Пункт", "rocket", "", "", 51.1, 71.4)[0]
-    assert not db.add_eco_point(store, "Пункт", "batteries", "", "", "abc", 71.4)[0]
-    assert not db.add_eco_point(store, "Пункт", "batteries", "", "", 95, 71.4)[0]
-    assert db.add_eco_point(store, "Бокс в ТРЦ", "batteries", "пр. Мангилик Ел, 1", "10–22", "51.09", "71.41")[0]
-    points = db.eco_points(store)
-    assert len(points) == 1 and points[0]["lat"] == pytest.approx(51.09)
-    db.delete_eco_point(store, points[0]["id"])
-    assert db.eco_points(store) == []
 
 
 # ---------- Страницы ----------
@@ -155,24 +143,6 @@ def test_teacher_without_school_sees_instructions(tmp_path, monkeypatch):
     app.set_role("teacher2", "teacher")
     app.go("Панель учителя")
     assert any("python -m core.roles" in i.value for i in app.at.info)
-
-
-def test_admin_adds_point_to_eco_map(tmp_path, monkeypatch):
-    app = start_app(tmp_path, monkeypatch)
-    app.go("Эко-карта")
-    assert "Пунктов на карте пока нет" in app.html() and "2gis.kz/astana/search" in app.html()
-    assert not any(e.label.startswith("Управление картой") for e in app.at.expander)  # гостю — нельзя
-
-    app.register_and_login("admin1")
-    app.set_role("admin1", "admin")
-    app.go("Эко-карта")
-    form = {w.label: w for w in app.at.text_input}
-    form["Название пункта"].input("Бокс для батареек <b>ТРЦ</b>")
-    form["Координаты: широта, долгота"].input("51.0890, 71.4160")
-    app.button("Добавить на карту").click()
-    app.run()
-    assert app.query("SELECT name, kind FROM eco_points") == [("Бокс для батареек <b>ТРЦ</b>", "batteries")]
-    assert "&lt;b&gt;ТРЦ" in app.html() and "<b>ТРЦ" not in app.html()  # в таблице — экранировано
 
 
 def test_kazakh_interface(tmp_path, monkeypatch):

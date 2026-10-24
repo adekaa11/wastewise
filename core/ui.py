@@ -331,11 +331,6 @@ section[data-testid="stSidebar"] .ww-foot a {{ color:#8FD5AE; border-color:#2C54
 .ww-block.fact {{ background:var(--mint); border-style:dashed; }}
 /* Плашка QR-режима «Школа · Бак»: левая граница цвета бака (DESIGN.md: акцент — граница, а не заливка) */
 .ww-block.bin {{ border-left:10px solid var(--c, var(--green)); background:var(--mint); }}
-/* Фильтр-«пилюли» на эко-карте: выбранные — зелёные, как вкладки */
-[data-testid="stMain"] button[data-variant="pills"] {{ border-radius:999px; border:2px solid var(--edge);
-    background:var(--surface); color:var(--ink); font-weight:600; }}
-[data-testid="stMain"] button[data-variant="pills"][data-selected="true"] {{ background:var(--green); color:#fff; }}
-[data-testid="stMain"] button[data-variant="pills"] p {{ color:inherit !important; }}
 .ww-block.fact p {{ color:var(--muted) !important; }}
 .ww-steps {{ list-style:none; counter-reset:s; margin:4px 0 0; padding:0; }}
 .ww-steps li {{ counter-increment:s; position:relative; padding:4px 0 4px 34px; line-height:1.5; }}

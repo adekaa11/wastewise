@@ -7,7 +7,7 @@ import pytest
 
 from core import i18n
 from core.assistant import AssistantError
-from core.content import LEVELS, POINT_KINDS, QUIZ_BANK, WASTE_INFO, HAZARD_MAYBE, HAZARD_SURE
+from core.content import LEVELS, QUIZ_BANK, WASTE_INFO, HAZARD_MAYBE, HAZARD_SURE
 from core.content_kk import QUIZ_KK, WASTE_KK
 from core.i18n_kk import KK
 from core.model import NOT_WASTE
@@ -33,17 +33,14 @@ def test_every_interface_text_is_translated():
 
 
 def test_dynamic_texts_are_translated():
-    """Тексты, которые попадают в _() не буквально: меню, уровни, пункты карты, сообщения базы и ИИ."""
-    dynamic = ["Главная", "Распознать отходы", "Спросить ИИ", "Викторина", "Рейтинг", "Эко-карта",
+    """Тексты, которые попадают в _() не буквально: меню, уровни, сообщения базы и ИИ."""
+    dynamic = ["Главная", "Распознать отходы", "Спросить ИИ", "Викторина", "Рейтинг",
                "Панель учителя", "Профиль", "Вход", "Регистрация", HAZARD_SURE, HAZARD_MAYBE,
                "тип", "участник", "распознавание", "викторина", "фото",
                "Логин должен быть не короче 3 символов.", "Пароль должен быть не короче 6 символов.",
                "Такой логин уже занят.", "Аккаунт создан. Теперь войдите.",
-               "Укажите название пункта.", "Неизвестный тип пункта.", "Координаты должны быть числами.",
-               "Проверьте координаты: широта от -90 до 90, долгота от -180 до 180.", "Пункт добавлен на карту.",
                "Дата", "Класс", "Бак", "Итоговый тип", "Ответ модели", "Исправлено", "Верно у бака", "да", "нет"]
     dynamic += [title for _, title, _ in LEVELS] + list(NOT_WASTE.values())
-    dynamic += [k["name"] for k in POINT_KINDS.values()] + [k["search"] for k in POINT_KINDS.values()]
     assert not [t for t in dynamic if t not in KK]
 
 

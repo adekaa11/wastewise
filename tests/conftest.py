@@ -34,7 +34,7 @@ needs_postgres = pytest.mark.skipif(not TEST_DATABASE_URL, reason="нужен TE
 def fresh_postgres():
     """Соединение с пустой тестовой базой Postgres: все таблицы WasteWise удалены, миграции применятся заново."""
     conn = db.get_conn(TEST_DATABASE_URL)
-    conn.execute("DROP TABLE IF EXISTS eco_points, quiz_results, scans, users, schema_migrations CASCADE")
+    conn.execute("DROP TABLE IF EXISTS quiz_results, scans, users, schema_migrations CASCADE")
     return conn
 
 

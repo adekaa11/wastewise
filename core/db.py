@@ -126,23 +126,11 @@ def init_db(conn):
         conn.execute("ALTER TABLE quiz_results ADD COLUMN points INTEGER DEFAULT 0")
         # до лимита баллы начислялись всегда: score × POINTS_PER_CORRECT_ANSWER
         conn.execute("UPDATE quiz_results SET points = score * ?", (POINTS_PER_CORRECT_ANSWER,))
-    # v2 (как supabase/migrations/20261024120000_school_qr_roles_map.sql): роли, QR-режим, эко-карта.
+    # v2 (как supabase/migrations/20261024120000_school_qr_roles.sql): роли и QR-режим школьных баков.
     _add_columns(conn, "users", {"role": "TEXT NOT NULL DEFAULT 'student'", "school_id": "TEXT",
                                  "class_label": "TEXT NOT NULL DEFAULT ''"})
     _add_columns(conn, "scans", {"school_id": "TEXT", "bin": "TEXT", "class_label": "TEXT"})
     conn.execute("CREATE INDEX IF NOT EXISTS idx_scans_school_date ON scans(school_id, date)")
-    conn.execute("""
-    CREATE TABLE IF NOT EXISTS eco_points (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        kind TEXT NOT NULL CHECK (kind IN ('batteries', 'ewaste', 'mercury', 'recycle')),
-        address TEXT NOT NULL DEFAULT '',
-        hours TEXT NOT NULL DEFAULT '',
-        lat REAL NOT NULL CHECK (lat BETWEEN -90 AND 90),
-        lon REAL NOT NULL CHECK (lon BETWEEN -180 AND 180),
-        added_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )""")
     conn.commit()
 
 
@@ -404,47 +392,6 @@ def school_ids(conn):
     """Коды школ, у баков которых уже фотографировали, — для выбора у администратора."""
     return [row[0] for row in conn.execute(
         "SELECT DISTINCT school_id FROM scans WHERE school_id IS NOT NULL ORDER BY school_id")]
-
-
-# ---------- Эко-карта ----------
-
-POINT_KINDS = ("batteries", "ewaste", "mercury", "recycle")
-
-
-@_locked
-def eco_points(conn):
-    rows = conn.execute("SELECT id, name, kind, address, hours, lat, lon FROM eco_points ORDER BY kind, name").fetchall()
-    return [dict(zip(["id", "name", "kind", "address", "hours", "lat", "lon"], row)) for row in rows]
-
-
-def add_eco_point(conn, name, kind, address, hours, lat, lon, added_by=None):
-    """Добавить пункт приёма. Возвращает (ok, сообщение)."""
-    name, address, hours = (str(v or "").strip()[:120] for v in (name, address, hours))
-    if not name:
-        return False, "Укажите название пункта."
-    if kind not in POINT_KINDS:
-        return False, "Неизвестный тип пункта."
-    try:
-        lat, lon = float(lat), float(lon)
-    except (TypeError, ValueError):
-        return False, "Координаты должны быть числами."
-    if not (-90 <= lat <= 90 and -180 <= lon <= 180) or (lat == 0 and lon == 0):
-        return False, "Проверьте координаты: широта от -90 до 90, долгота от -180 до 180."
-    _insert_point(conn, name, kind, address, hours, lat, lon, added_by)
-    return True, "Пункт добавлен на карту."
-
-
-@_locked
-def _insert_point(conn, name, kind, address, hours, lat, lon, added_by):
-    conn.execute("INSERT INTO eco_points (name, kind, address, hours, lat, lon, added_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                 (name, kind, address, hours, lat, lon, added_by))
-    conn.commit()
-
-
-@_locked
-def delete_eco_point(conn, point_id):
-    conn.execute("DELETE FROM eco_points WHERE id = ?", (point_id,))
-    conn.commit()
 
 
 @_locked

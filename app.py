@@ -10,13 +10,12 @@ import importlib
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import quote
 
 import streamlit as st
 from dotenv import load_dotenv
 
 from core import db
-from core.content import (CITY_CENTER, GUEST_SCAN_NUDGE, LOW_CONFIDENCE, POINT_KINDS, POINTS_PER_CORRECT_ANSWER,
+from core.content import (GUEST_SCAN_NUDGE, LOW_CONFIDENCE, POINTS_PER_CORRECT_ANSWER,
                           POINTS_PER_FEEDBACK, POINTS_PER_SCAN, QUIZ_REWARDS_PER_DAY, WASTE_INFO, HAZARD_MAYBE,
                           HAZARD_SURE, canonical, hazard_hint, level_for)
 from core.model import DETECTOR_PATH, check_scene, classify, load_image, load_model
@@ -261,12 +260,11 @@ with st.sidebar:
     st.query_params["lang"] = lang
     if user:
         points_slot = st.empty()  # заполняется в конце скрипта, чтобы баллы были свежими
-        pages = ["Главная", "Распознать отходы", "Спросить ИИ", "Викторина", "Рейтинг", "Эко-карта"]
+        pages = ["Главная", "Распознать отходы", "Спросить ИИ", "Викторина", "Рейтинг"]
         pages += ["Панель учителя"] if is_staff else []
         pages += ["Профиль"]
     else:
-        pages = ["Главная", "Распознать отходы", "Спросить ИИ", "Викторина", "Рейтинг", "Эко-карта",
-                 "Вход", "Регистрация"]
+        pages = ["Главная", "Распознать отходы", "Спросить ИИ", "Викторина", "Рейтинг", "Вход", "Регистрация"]
     # Открытая страница хранится сама по себе (session_state.page): при смене языка или входе в аккаунт
     # меню перерисовывается с новыми подписями, а страница остаётся та же. По QR-коду бака сайт
     # сразу открывает «Распознать отходы».
@@ -563,7 +561,7 @@ elif page == "Спросить ИИ":
                 ui.block(f"{icon} {ui.esc(title)}{ui.esc(item)}", ui.esc(ans["answer"]))
                 if kind == "hazardous" or (info and info.get("hazardous")):
                     st.warning(_("Опасные отходы — только в специальные пункты приёма, не в мусорный бак "
-                                 "и не в канализацию. Ближайшие пункты — на странице «Эко-карта»."))
+                                 "и не в канализацию."))
                 if ans["steps"]:
                     ui.steps(_("Как подготовить"), ans["steps"], tone)
                 if info:
@@ -688,72 +686,6 @@ elif page == "Рейтинг":
         rows = sorted(merged.items(), key=lambda kv: kv[1], reverse=True)
         ui.bars([(f"{emoji(c)} {ui.esc(rus(c))}", n, f"{n} {plural(n, 'фото', 'фото', 'фото')}", color(c))
                  for c, n in rows])
-
-# =====================================================================
-# ЭКО-КАРТА — пункты приёма опасных и редких фракций (батарейки, электроника, ртутные лампы, вторсырьё)
-# =====================================================================
-elif page == "Эко-карта":
-    ui.page_header(_("Эко-карта Астаны"), _("Куда сдать батарейки, электронику, ртутные лампы и вторсырьё. "
-                   "Опасные отходы — только в специальные пункты, не в обычный бак."), BIN_COLORS)
-    kinds = list(POINT_KINDS)
-    chosen = st.pills(_("Что сдаёте?"), kinds, selection_mode="multi", default=kinds,
-                      format_func=lambda k: f"{POINT_KINDS[k]['emoji']} {_(POINT_KINDS[k]['name'])}")
-    points = [p for p in db.eco_points(conn) if p["kind"] in (chosen or [])]
-
-    if points:
-        import pydeck as pdk  # входит в Streamlit: отдельная зависимость не нужна
-
-        def rgb(hex_color):
-            return [int(hex_color[i:i + 2], 16) for i in (1, 3, 5)] + [230]
-
-        # Текст подсказки на карте — HTML: всё, что ввёл администратор, экранируется.
-        data = [{"lat": p["lat"], "lon": p["lon"], "color": rgb(POINT_KINDS[p["kind"]]["color"]),
-                 "name": ui.esc(p["name"]), "kind": ui.esc(_(POINT_KINDS[p["kind"]]["name"])),
-                 "address": ui.esc(p["address"]), "hours": ui.esc(p["hours"])} for p in points]
-        layer = pdk.Layer("ScatterplotLayer", data=data, get_position="[lon, lat]", get_fill_color="color",
-                          get_radius=90, radius_min_pixels=7, radius_max_pixels=18, pickable=True,
-                          stroked=True, get_line_color=[16, 42, 30], line_width_min_pixels=2)
-        st.pydeck_chart(pdk.Deck(
-            layers=[layer], map_style=pdk.map_styles.DARK if dark else pdk.map_styles.LIGHT,
-            initial_view_state=pdk.ViewState(latitude=CITY_CENTER[0], longitude=CITY_CENTER[1], zoom=11),
-            tooltip={"html": "<b>{name}</b><br/>{kind}<br/>{address}<br/>{hours}"}), width="stretch")
-        ui.table([_("Пункт"), _("Что принимают"), _("Адрес"), _("Часы работы")],
-                 [(p["name"], f"{POINT_KINDS[p['kind']]['emoji']} {_(POINT_KINDS[p['kind']]['name'])}",
-                   p["address"], p["hours"]) for p in points])
-    else:
-        ui.empty(ui.esc(_("Пунктов на карте пока нет")),
-                 ui.esc(_("Мы добавляем на карту только проверенные адреса. А пока найдите ближайший пункт "
-                          "в 2ГИС по ссылкам ниже.")))
-
-    st.markdown("### " + _("Найти рядом в 2ГИС"))
-    st.markdown("  \n".join(
-        f"{POINT_KINDS[k]['emoji']} [{_(POINT_KINDS[k]['name'])}]"
-        f"(https://2gis.kz/astana/search/{quote(_(POINT_KINDS[k]['search']))})" for k in kinds))
-    st.caption(_("Перед поездкой позвоните в пункт: часы работы и список принимаемого меняются."))
-
-    if role == "admin":  # точки добавляет только администратор — так на карте нет случайных адресов
-        with st.expander(_("Управление картой (администратор)")):
-            with st.form("add_point", clear_on_submit=True):
-                name = st.text_input(_("Название пункта"))
-                kind = st.selectbox(_("Что принимают"), kinds, format_func=lambda k: _(POINT_KINDS[k]["name"]))
-                address = st.text_input(_("Адрес"))
-                hours = st.text_input(_("Часы работы"), placeholder="10:00–20:00")
-                coords = st.text_input(_("Координаты: широта, долгота"), placeholder="51.128000, 71.430400",
-                                       help=_("В 2ГИС или Google Картах нажмите на точку и скопируйте координаты."))
-                if st.form_submit_button(_("Добавить на карту"), type="primary"):
-                    lat, _sep, lon = coords.replace(";", ",").partition(",")
-                    ok, msg = db.add_eco_point(conn, name, kind, address, hours, lat.strip() or None,
-                                               lon.strip() or None, user["id"])
-                    (st.success if ok else st.error)(_(msg))
-                    if ok:
-                        st.rerun()
-            existing = db.eco_points(conn)
-            if existing:
-                victim = st.selectbox(_("Удалить пункт"), existing,
-                                      format_func=lambda p: f"{p['name']} — {p['address']}")
-                if st.button(_("Удалить с карты")):
-                    db.delete_eco_point(conn, victim["id"])
-                    st.rerun()
 
 # =====================================================================
 # ПАНЕЛЬ УЧИТЕЛЯ — отчёт по школе (QR-режим) и QR-коды для баков
