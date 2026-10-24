@@ -233,6 +233,8 @@ def start_app(tmp_path, monkeypatch, database_url=None, secrets=None, query=None
     monkeypatch.setattr(st, "file_uploader", lambda *a, **k: uploads["file"])
     st.cache_data.clear()
     st.cache_resource.clear()
+    from core import fresh
+    fresh.mark()  # модули уже загружены и подменены выше — app.py не должен их перечитывать
     return App(tmp_path / "app.py", db.DB_PATH, classifier, detector, uploads, database_url, secrets, query)
 
 

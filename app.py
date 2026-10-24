@@ -14,7 +14,12 @@ from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
 
-from core import db
+# Streamlit Cloud после обновления кода перезапускает app.py, но модули из core/ держит в памяти старыми —
+# новые функции падали с ImportError. Перечитываем те, чьи файлы изменились (core/fresh.py) — до импортов.
+from core import fresh
+_reloaded = fresh.refresh()
+
+from core import db  # noqa: E402 — после fresh.refresh(), чтобы взять свежие модули
 from core.content import (GUEST_SCAN_NUDGE, KZ_FACTS, LOW_CONFIDENCE, MODEL_ACCURACY, POINTS_PER_CORRECT_ANSWER,
                           POINTS_PER_FEEDBACK, POINTS_PER_SCAN, QUIZ_REWARDS_PER_DAY, WASTE_INFO, HAZARD_MAYBE,
                           HAZARD_SURE, canonical, hazard_hint, level_for)
@@ -24,9 +29,8 @@ from core.quiz import random_questions
 from core import assistant, i18n, qr as qrcodes, report, storage, ui
 from core.i18n import _
 
-# Streamlit Cloud после обновления кода перезапускает app.py, но модули из core/ держит в памяти старыми —
-# новый CSS не появлялся, а новые функции падали с «has no attribute». ui.py — только оформление
-# без состояния, поэтому его безопасно перечитывать при каждом запуске (это быстро).
+fresh.mark()  # всё импортировано — запоминаем версии файлов
+# ui.py — только оформление без состояния, его безопасно перечитывать при каждом запуске (это быстро).
 ui = importlib.reload(ui)
 
 ROOT = Path(__file__).resolve().parent
@@ -38,6 +42,8 @@ if not log.handlers:
     _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s wastewise: %(message)s"))
     log.addHandler(_handler)
     log.setLevel(logging.INFO)
+if _reloaded:
+    log.info("Обновление кода: перечитаны модули %s", ", ".join(_reloaded))
 ASSETS = ROOT / "assets"
 FEEDBACK_DIR = ROOT / "data" / "feedback"
 
