@@ -1,6 +1,9 @@
 """Нейросеть: загрузка модели YOLO и распознавание фото."""
 import io
+import functools
 import os
+import pickle
+import zipfile
 import threading
 from pathlib import Path
 
@@ -33,6 +36,81 @@ _PREDICT_LOCK = threading.Lock()
 # когда не может открыть картинку. На сайте это лишнее: долго, без проверки версий и с риском сломать
 # окружение. Выключаем до первого импорта ultralytics; битый файл и так ловит load_image ниже.
 os.environ.setdefault("YOLO_AUTOINSTALL", "false")
+
+
+class _Stub:
+    """Заглушка вместо любого класса из файла модели: ничего не выполняет, только запоминает данные."""
+
+    def __init__(self, *args, **kwargs):
+        self._items = {}
+
+    def __setstate__(self, state):
+        self._state = state
+
+    def __setitem__(self, key, value):
+        self.__dict__.setdefault("_items", {})[key] = value  # объект мог быть создан без __init__
+
+    def __call__(self, *args, **kwargs):
+        return _Stub()
+
+    def append(self, value):
+        pass
+
+    def extend(self, values):
+        pass
+
+
+class _NamesUnpickler(pickle.Unpickler):
+    """Читает файл модели, не создавая настоящих объектов: никакой код из файла не выполняется,
+    тензоры (веса) не загружаются. Нужен только словарь имён классов."""
+
+    def find_class(self, module, name):
+        return _Stub
+
+    def persistent_load(self, pid):
+        return None
+
+
+def _find_names(obj, depth=0):
+    """Ищет словарь {0: 'ewaste', 1: 'glass', …} внутри разобранного файла модели."""
+    if depth > 20:
+        return None
+    if isinstance(obj, _Stub):
+        return _find_names(getattr(obj, "_state", None), depth + 1) or _find_names(getattr(obj, "_items", None), depth + 1)
+    if isinstance(obj, dict):
+        if obj and all(isinstance(k, int) for k in obj) and all(isinstance(v, str) for v in obj.values()):
+            return dict(obj)
+        values = obj.values()
+    elif isinstance(obj, (list, tuple)):
+        values = obj
+    else:
+        return None
+    for value in values:
+        found = _find_names(value, depth + 1)
+        if found:
+            return found
+    return None
+
+
+@functools.lru_cache(maxsize=8)
+def _class_names_cached(path, mtime):
+    with zipfile.ZipFile(path) as archive:
+        pkl = next(n for n in archive.namelist() if n.endswith("data.pkl"))
+        with archive.open(pkl) as data:
+            return _find_names(_NamesUnpickler(data).load())
+
+
+def class_names(path=MODEL_PATH):
+    """Имена классов модели {номер: имя} — за доли секунды, без torch и без загрузки нейросети.
+
+    Нужны странице «Распознать отходы» сразу при открытии (сколько типов знает модель). Раньше ради них
+    грузилась вся нейросеть — и раздел открывался долго. None — если файл прочитать не удалось:
+    тогда app.py возьмёт имена у загруженной модели, как раньше.
+    """
+    try:
+        return _class_names_cached(str(path), Path(path).stat().st_mtime)
+    except Exception:
+        return None
 
 
 def load_model(path=MODEL_PATH):

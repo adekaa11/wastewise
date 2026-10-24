@@ -229,6 +229,9 @@ def start_app(tmp_path, monkeypatch, database_url=None, secrets=None, query=None
     monkeypatch.setattr(model, "load_model",
                         lambda path=model.MODEL_PATH: detector if path == model.DETECTOR_PATH else classifier)
     monkeypatch.setattr(model, "_has_face", lambda gray: False)
+    # Имена классов — у поддельной модели (настоящий best.pt знает 7 типов, а тесты проверяют и старую на 4)
+    monkeypatch.setattr(model, "class_names", lambda path=model.MODEL_PATH: dict(classifier.names))
+    monkeypatch.setenv("WASTEWISE_WARMUP", "0")  # без фонового потока: тесты быстрые и предсказуемые
     uploads = {"file": None}
     monkeypatch.setattr(st, "file_uploader", lambda *a, **k: uploads["file"])
     st.cache_data.clear()

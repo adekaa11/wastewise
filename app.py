@@ -7,6 +7,7 @@ import logging
 import os
 import hashlib
 import importlib
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -23,7 +24,7 @@ from core import db  # noqa: E402 — после fresh.refresh(), чтобы в�
 from core.content import (GUEST_SCAN_NUDGE, KZ_FACTS, LOW_CONFIDENCE, MODEL_ACCURACY, POINTS_PER_CORRECT_ANSWER,
                           POINTS_PER_FEEDBACK, POINTS_PER_SCAN, QUIZ_REWARDS_PER_DAY, WASTE_INFO, HAZARD_MAYBE,
                           HAZARD_SURE, canonical, hazard_hint, level_for)
-from core.model import DETECTOR_PATH, check_scene, classify, load_image, load_model
+from core.model import DETECTOR_PATH, check_scene, class_names, classify, load_image, load_model
 from core.pg import connection_hint
 from core.quiz import random_questions
 from core import assistant, i18n, qr as qrcodes, report, storage, ui
@@ -80,14 +81,38 @@ qr = qrcodes.parse(st.query_params)
 ui.inject()
 
 
-@st.cache_resource  # модель и база загружаются один раз, а не при каждом клике
+@st.cache_resource(show_spinner=False)  # модель и база загружаются один раз, а не при каждом клике
 def get_model():
     return load_model()
 
 
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def get_detector():
     return load_model(DETECTOR_PATH)
+
+
+def _warm_models():
+    """Загрузить обе нейросети заранее, пока человек читает главную или выбирает фото.
+
+    Загрузка torch + YOLO на бесплатном сервере — десятки секунд. Раньше их ждал первый посетитель
+    «Распознать отходы» перед пустым экраном. У Streamlit на каждую модель свой замок: если фото придёт,
+    пока модель ещё грузится, страница дождётся этой же загрузки, а не начнёт вторую.
+    """
+    try:
+        started = datetime.now()
+        get_model()
+        get_detector()
+        log.info("Нейросети загружены в фоне за %.1f с", (datetime.now() - started).total_seconds())
+    except Exception:
+        log.exception("Фоновая загрузка нейросетей не удалась — загрузятся при первом фото")
+
+
+@st.cache_resource(show_spinner=False)
+def start_warmup():
+    """Один раз на процесс сервера: фоновый поток с загрузкой моделей (WASTEWISE_WARMUP=0 — выключить)."""
+    if os.getenv("WASTEWISE_WARMUP", "1") != "0":
+        threading.Thread(target=_warm_models, name="wastewise-warmup", daemon=True).start()
+    return True
 
 
 # Streamlit перезапускает весь скрипт при КАЖДОМ клике (выбор в списке, кнопка и т.п.).
@@ -172,6 +197,9 @@ except Exception:  # база недоступна: Supabase на паузе, н
     st.stop()
 
 
+start_warmup()  # нейросети начинают грузиться в фоне сразу при первом заходе на сайт
+
+
 def b64(path):
     return base64.b64encode(Path(path).read_bytes()).decode()
 
@@ -198,8 +226,13 @@ BIN_COLORS = [info["color"] for info in WASTE_INFO.values()]  # полоса п�
 
 
 def model_classes():
-    """Какие типы знает загруженная модель: старая — 4, новая — 7 (порядок — как в WASTE_INFO)."""
-    known = {canonical(name) for name in get_model().names.values()}
+    """Какие типы знает модель: старая — 4, новая — 7 (порядок — как в WASTE_INFO).
+
+    Имена читаются прямо из файла best.pt за доли секунды (core/model.py → class_names) — без загрузки
+    нейросети, поэтому «Распознать отходы» открывается сразу. Не вышло — берём у загруженной модели.
+    """
+    names = class_names() or get_model().names
+    known = {canonical(name) for name in names.values()}
     return [c for c in WASTE_INFO if c in known] + sorted(known - set(WASTE_INFO))
 
 
