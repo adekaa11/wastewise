@@ -165,3 +165,19 @@ def test_page_survives_language_switch(tmp_path, monkeypatch):
     app.at.session_state["lang_pick"] = "kk"
     app.run()
     assert "Кім ең көп сұрыптайды" in app.html()
+
+
+def test_home_shows_model_accuracy_and_hides_zero_counters(tmp_path, monkeypatch):
+    app = start_app(tmp_path, monkeypatch)
+    labels = [m.label for m in app.at.metric]
+    assert "Точность модели" in labels
+    assert next(m.value for m in app.at.metric if m.label == "Точность модели") == "85,7%"
+    assert "Исправлений от пользователей" not in labels  # пустой счётчик (0) не показываем
+
+
+def test_for_schools_page_explains_connection_and_data(tmp_path, monkeypatch):
+    app = start_app(tmp_path, monkeypatch)
+    app.go("Для школ")
+    html = app.html()
+    assert "Наклейте QR-коды" in html and "не сохраняется" in html and "OpenAI" in html
+    assert any(b.label == "Написать в Telegram" for b in app.at.get("link_button"))

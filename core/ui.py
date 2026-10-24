@@ -132,6 +132,14 @@ section[data-testid="stSidebar"] [data-testid="stAlert"] * {{ color:var(--lime) 
 .stButton button[kind^="primary"], .stFormSubmitButton button[kind^="primary"] {{
     background:var(--green); border-color:var(--edge); color:#fff; }}
 .stButton button[kind^="primary"]:hover, .stFormSubmitButton button[kind^="primary"]:hover {{ color:#fff; }}
+/* Кнопка-ссылка (st.link_button) — такая же «пилюля-наклейка», как остальные кнопки */
+.stLinkButton a {{ border-radius:999px; font-weight:600; padding:.55rem 1.5rem; border:2px solid var(--edge);
+    background:var(--surface); color:var(--ink); box-shadow:3px 3px 0 var(--shadow);
+    transition:transform .08s ease, box-shadow .08s ease; }}
+.stLinkButton a[kind^="primary"] {{ background:var(--green); color:#fff; border-color:var(--edge); }}
+.stLinkButton a:hover {{ transform:translate(-1px, -1px); box-shadow:4px 4px 0 var(--shadow); color:inherit; }}
+.stLinkButton a[kind^="primary"]:hover {{ color:#fff; }}
+.stLinkButton a p {{ color:inherit !important; font-weight:600; }}
 .stButton button:disabled {{ opacity:.55; box-shadow:none; transform:none; }}
 .stButton button:focus-visible, .stFormSubmitButton button:focus-visible {{
     outline:3px solid #8FD5AE; outline-offset:2px; }}

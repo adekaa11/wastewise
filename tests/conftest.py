@@ -221,7 +221,7 @@ def start_app(tmp_path, monkeypatch, database_url=None, secrets=None, query=None
         monkeypatch.delenv(key, raising=False)  # чтобы тесты не попали в настоящую базу и хранилище
     shutil.copy(ROOT / "app.py", tmp_path / "app.py")
     (tmp_path / "assets").mkdir()
-    for name in ("Logo_waste_seg.jpg", "123.jpg"):
+    for name in ("Logo_waste_seg.jpg", "123.jpg", "hero.jpg"):
         shutil.copy(ROOT / "assets" / name, tmp_path / "assets" / name)
 
     classifier, detector = FakeClassifier(), FakeDetector()

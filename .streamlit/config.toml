@@ -5,3 +5,7 @@ backgroundColor = "#F7F6F1"          # основной фон страницы 
 secondaryBackgroundColor = "#ECEFE9" # поля ввода, вкладки, таблицы
 textColor = "#102A1E"                # текст (почти чёрный зелёный)
 font = "sans serif"
+
+[client]
+# Без меню разработчика (Deploy, Rerun, настройки) — сайт для школ, а не для программистов
+toolbarMode = "minimal"
