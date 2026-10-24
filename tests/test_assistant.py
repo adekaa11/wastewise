@@ -101,11 +101,57 @@ def test_page_is_off_without_key(tmp_path, monkeypatch):
     assert not app.at.text_input
 
 
-def test_page_asks_for_login(tmp_path, monkeypatch):
+def test_guest_gets_two_trial_questions_then_asked_to_log_in(tmp_path, monkeypatch):
+    """Гостевой демо-режим: без входа — GUEST_PER_SESSION пробных вопросов, потом предложение войти."""
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    fake = FakeOpenAI()
+    monkeypatch.setattr(assistant, "_make_client", lambda: fake)
     app = start_app(tmp_path, monkeypatch)
     app.go("Спросить ИИ")
+    assert any("Пробный режим" in c for c in app.captions())
+    for i in range(assistant.GUEST_PER_SESSION):
+        app.at.text_input[0].input(f"предмет номер {i}")
+        app.at.button[0].click()
+        app.run()
+    assert fake.calls == assistant.GUEST_PER_SESSION
     assert any("Войдите" in i.value for i in app.at.info)
+    assert app.at.button[0].disabled  # кнопка «Спросить» выключена — дальше только со входом
+
+
+def test_guest_limits_in_assistant():
+    fake = FakeOpenAI()
+    guest = assistant.GUEST_PREFIX + "abc"
+    for i in range(assistant.GUEST_PER_SESSION):
+        assistant.ask(f"гостевой вопрос {i}", guest, client=fake)
+    assert assistant.left_today(guest) == 0
+    with pytest.raises(assistant.AssistantError, match="Войдите"):
+        assistant.ask("ещё вопрос", guest, client=fake)
+    assert assistant.left_today(1) == assistant.PER_USER_PER_DAY  # у вошедших свой, больший лимит
+
+
+def test_all_guests_share_a_daily_ceiling(monkeypatch):
+    """Обновление страницы даёт гостю новую сессию — но не бесконечные деньги: общий потолок на всех гостей."""
+    monkeypatch.setattr(assistant, "GUEST_GLOBAL_PER_DAY", 3)
+    fake = FakeOpenAI()
+    for i in range(3):
+        assistant.ask(f"вопрос {i}", f"{assistant.GUEST_PREFIX}{i}", client=fake)
+    with pytest.raises(assistant.AssistantError, match="у всех гостей"):
+        assistant.ask("вопрос 9", f"{assistant.GUEST_PREFIX}new", client=fake)
+    assert assistant.ask("вопрос 9", 1, client=fake)  # вошедшего пользователя потолок гостей не касается
+
+
+def test_answer_language_follows_site_language():
+    fake = FakeOpenAI()
+    assistant.ask("батарейка", 1, client=fake, lang="kk")
+    assert "казахском" in fake.last_messages[0]["content"]
+    assistant.ask("батарейка", 1, client=fake, lang="ru")
+    assert fake.calls == 2  # русский и казахский ответы кэшируются отдельно
+    assert "на русском" in fake.last_messages[0]["content"]
+
+
+def test_kazakh_hazard_word_wins_over_material():
+    raw = '{"type": "metal", "item": "бояу банкасы", "answer": "Бұл қауіпті қалдық, арнайы пунктке.", "steps": []}'
+    assert assistant._clean(raw)["type"] == "hazardous"
 
 
 def test_page_shows_escaped_answer_and_gives_no_points(tmp_path, monkeypatch):
