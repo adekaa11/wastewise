@@ -15,6 +15,8 @@ from datetime import datetime, timedelta
 
 import streamlit as st
 
+from .i18n import _, lang as current_lang
+
 INK = "#102A1E"      # почти чёрный зелёный — текст и тёмные фоны (светлая тема)
 PAPER = "#F7F6F1"    # тёплый белый — фон страницы
 SURFACE = "#FFFFFF"  # карточки
@@ -102,6 +104,15 @@ section[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {{
 section[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p {{ color:{INK}; font-weight:600; }}
 section[data-testid="stSidebar"] .stButton button {{
     background:transparent; border:1px solid #2C5443; color:#C9DCD2; width:100%; box-shadow:none; }}
+/* Переключатель языка RUS / QAZ в меню: пилюли, выбранная — лайм, как активный пункт меню */
+section[data-testid="stSidebar"] [data-testid="stButtonGroup"] button {{
+    border-radius:999px; border:1px solid #2C5443; background:transparent; color:#C9DCD2;
+    font-weight:600; padding:.2rem .9rem; min-height:0; }}
+section[data-testid="stSidebar"] [data-testid="stButtonGroup"] button p {{ color:inherit !important; }}
+section[data-testid="stSidebar"] [data-testid="stButtonGroup"] button:hover {{ background:#1B3D2D; color:#fff; }}
+section[data-testid="stSidebar"] [data-testid="stButtonGroup"] button[data-selected="true"] {{
+    background:var(--lime); border-color:var(--lime); color:{INK}; box-shadow:2px 2px 0 #000; }}
+section[data-testid="stSidebar"] [data-testid="stButtonGroup"] button[data-selected="true"] * {{ color:{INK} !important; }}
 section[data-testid="stSidebar"] [data-testid="stAlert"] {{ background:#1B3D2D; border:none; box-shadow:none; }}
 section[data-testid="stSidebar"] [data-testid="stAlert"] * {{ color:var(--lime) !important; font-weight:600; }}
 .ww-logo {{ background:{SURFACE}; border-radius:16px; padding:10px; display:inline-block;
@@ -318,6 +329,13 @@ section[data-testid="stSidebar"] .ww-foot a {{ color:#8FD5AE; border-color:#2C54
 .ww-block p {{ margin:0; color:var(--ink); line-height:1.55; }}
 .ww-block.warn {{ border-left:8px solid var(--amber); background:var(--warm); }}
 .ww-block.fact {{ background:var(--mint); border-style:dashed; }}
+/* Плашка QR-режима «Школа · Бак»: левая граница цвета бака (DESIGN.md: акцент — граница, а не заливка) */
+.ww-block.bin {{ border-left:10px solid var(--c, var(--green)); background:var(--mint); }}
+/* Фильтр-«пилюли» на эко-карте: выбранные — зелёные, как вкладки */
+[data-testid="stMain"] button[data-variant="pills"] {{ border-radius:999px; border:2px solid var(--edge);
+    background:var(--surface); color:var(--ink); font-weight:600; }}
+[data-testid="stMain"] button[data-variant="pills"][data-selected="true"] {{ background:var(--green); color:#fff; }}
+[data-testid="stMain"] button[data-variant="pills"] p {{ color:inherit !important; }}
 .ww-block.fact p {{ color:var(--muted) !important; }}
 .ww-steps {{ list-style:none; counter-reset:s; margin:4px 0 0; padding:0; }}
 .ww-steps li {{ counter-increment:s; position:relative; padding:4px 0 4px 34px; line-height:1.5; }}
@@ -474,7 +492,7 @@ def hero(image_b64, eyebrow, title, subtitle, bins=()):
     _html(
         f'<div class="ww-hero"><div class="ww-hero-text"><p class="ww-eyebrow">{eyebrow}</p>'
         f"<h1>{title}</h1><p>{subtitle}</p></div>"
-        f'<div class="ww-hero-art" role="img" aria-label="Люди сортируют мусор по бакам" '
+        f'<div class="ww-hero-art" role="img" aria-label="{esc(_("Люди сортируют мусор по бакам"))}" '
         f"style=\"background-image:url('data:image/jpeg;base64,{image_b64}')\"></div>"
         + (f'<div class="ww-bins">{row}</div>' if row else "") + "</div>"
     )
@@ -508,7 +526,7 @@ def waste_types(items):
     """Типы отходов «крышками» своего цвета. items — (emoji, название, цвет, знает ли модель)."""
     chips = "".join(
         f'<span class="ww-type" style="--c:{color}">{emoji} {esc(name)}</span>' if known else
-        f'<span class="ww-type off">{emoji} {esc(name)} <small>— скоро</small></span>'
+        f'<span class="ww-type off">{emoji} {esc(name)} <small>— {esc(_("скоро"))}</small></span>'
         for emoji, name, color, known in items
     )
     _html(f'<div class="ww-types">{chips}</div>')
@@ -548,13 +566,18 @@ def result_tag(emoji, name, color, prob):
         f'<div class="ww-tag" style="--c:{color}">'
         f'<h2><span class="ww-tag-emoji">{emoji}</span>{esc(name)}</h2>'
         f'<div class="ww-meter"><div style="width:{prob * 100:.0f}%"></div></div>'
-        f"<p>Модель уверена на {prob:.0%}</p></div>"
+        f"<p>{esc(_('Модель уверена на {p}').format(p=f'{prob:.0%}'))}</p></div>"
     )
 
 
 def block(title, body, kind=""):
     """Карточка с подзаголовком: «Куда нести», «Не принимают», факт."""
     _html(f'<div class="ww-block {kind}"><div class="ww-block-title">{title}</div><p>{body}</p></div>')
+
+
+def bin_banner(title, body, color):
+    """Плашка с левой границей цвета бака — например, «Школа · Бак» в QR-режиме."""
+    _html(f'<div class="ww-block bin" style="--c:{color}"><div class="ww-block-title">{title}</div><p>{body}</p></div>')
 
 
 def steps(title, items, color):
@@ -573,7 +596,7 @@ def rules(items):
 
 
 def _you(is_me):
-    return '<span class="ww-you">это вы</span>' if is_me else ""
+    return f'<span class="ww-you">{esc(_("это вы"))}</span>' if is_me else ""
 
 
 def podium(rows, me_id=None):
@@ -610,7 +633,7 @@ def ranking(rows, start=4, me_id=None):
 
 def question_number(i, total, color=GREEN):
     """Номер вопроса — бейдж; цвет меняется от вопроса к вопросу (цвета баков)."""
-    _html(f'<div class="ww-qnum" style="--c:{color}">Вопрос {i} из {total}</div>')
+    _html(f'<div class="ww-qnum" style="--c:{color}">{esc(_("Вопрос {i} из {total}").format(i=i, total=total))}</div>')
 
 
 def score(correct, total, title, text):
@@ -624,7 +647,7 @@ def review(question, ok, right, why):
     color = GREEN if ok else AMBER
     mark = "✅" if ok else "❌"
     _html(f'<div class="ww-review" style="--c:{color}">{mark} <b>{esc(question)}</b>'
-          f"<small>Правильно: {esc(right)}. {esc(why)}</small></div>")
+          f"<small>{esc(_('Правильно'))}: {esc(right)}. {esc(why)}</small></div>")
 
 
 # ---------- Профиль ----------
@@ -639,11 +662,11 @@ def level(emoji, title, points, next_title=None, next_at=None, start_at=0):
     """Уровень игрока и сколько осталось до следующего."""
     if next_at:
         share = (points - start_at) / max(1, next_at - start_at) * 100
-        note = f"до уровня «{esc(next_title)}» — {next_at - points}"
+        note = esc(_("до уровня «{title}» — {n}").format(title=next_title, n=next_at - points))
     else:
-        share, note = 100, "максимальный уровень"
+        share, note = 100, esc(_("максимальный уровень"))
     _html(f'<div class="ww-level"><div class="ww-level-top"><b>{emoji} {esc(title)}</b>'
-          f"<span>{points} баллов · {note}</span></div>"
+          f"<span>{esc(_('{n} баллов').format(n=points))} · {note}</span></div>"
           f'<div class="ww-bar-track"><div style="width:{max(3, min(100, share)):.0f}%"></div></div></div>')
 
 
@@ -665,6 +688,7 @@ def history(items):
 
 
 MONTHS = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"]
+MONTHS_KK = ["қаң", "ақп", "нау", "сәу", "мам", "мау", "шіл", "там", "қыр", "қаз", "қар", "жел"]
 LOCAL_OFFSET = timedelta(hours=5)  # база хранит время в UTC, а сайт — для Казахстана (UTC+5)
 
 
@@ -678,4 +702,5 @@ def nice_date(value):
     if not isinstance(value, datetime):
         return str(value or "")
     value = value.replace(tzinfo=None) + LOCAL_OFFSET
-    return f"{value.day} {MONTHS[value.month - 1]}, {value:%H:%M}"
+    months = MONTHS_KK if current_lang() == "kk" else MONTHS
+    return f"{value.day} {months[value.month - 1]}, {value:%H:%M}"

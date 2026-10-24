@@ -126,7 +126,32 @@ def init_db(conn):
         conn.execute("ALTER TABLE quiz_results ADD COLUMN points INTEGER DEFAULT 0")
         # до лимита баллы начислялись всегда: score × POINTS_PER_CORRECT_ANSWER
         conn.execute("UPDATE quiz_results SET points = score * ?", (POINTS_PER_CORRECT_ANSWER,))
+    # v2 (как supabase/migrations/20261024120000_school_qr_roles_map.sql): роли, QR-режим, эко-карта.
+    _add_columns(conn, "users", {"role": "TEXT NOT NULL DEFAULT 'student'", "school_id": "TEXT",
+                                 "class_label": "TEXT NOT NULL DEFAULT ''"})
+    _add_columns(conn, "scans", {"school_id": "TEXT", "bin": "TEXT", "class_label": "TEXT"})
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_scans_school_date ON scans(school_id, date)")
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS eco_points (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('batteries', 'ewaste', 'mercury', 'recycle')),
+        address TEXT NOT NULL DEFAULT '',
+        hours TEXT NOT NULL DEFAULT '',
+        lat REAL NOT NULL CHECK (lat BETWEEN -90 AND 90),
+        lon REAL NOT NULL CHECK (lon BETWEEN -180 AND 180),
+        added_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
     conn.commit()
+
+
+def _add_columns(conn, table, columns):
+    """SQLite не умеет ADD COLUMN IF NOT EXISTS — добавляем только недостающие столбцы."""
+    have = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+    for name, ddl in columns.items():
+        if name not in have:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
 
 
 # ---------- Пароли ----------
@@ -150,28 +175,33 @@ def verify_password(stored: str, password: str) -> bool:
 
 # ---------- Пользователи ----------
 
-def register_user(conn, username, password, name, school=""):
-    """Возвращает (ok, сообщение)."""
+def register_user(conn, username, password, name, school="", class_label=""):
+    """Возвращает (ok, сообщение). class_label — класс ученика («7А»), нужен для отчёта учителя."""
     username = username.strip()
     if len(username) < 3:
         return False, "Логин должен быть не короче 3 символов."
     if len(password) < 6:
         return False, "Пароль должен быть не короче 6 символов."
     hashed = hash_password(password)  # медленная операция — до замка, чтобы не задерживать других
-    if not _insert_user(conn, username, hashed, name.strip(), school.strip()):
+    if not _insert_user(conn, username, hashed, name.strip(), school.strip(), clean_class(class_label)):
         return False, "Такой логин уже занят."
     return True, "Аккаунт создан. Теперь войдите."
 
 
+def clean_class(value):
+    """« 7 а » → «7А»: один класс не должен распадаться в отчёте на «7а», «7 А» и «7А»."""
+    return "".join(str(value or "").split()).upper()[:10]
+
+
 @_locked
-def _insert_user(conn, username, hashed, name, school):
+def _insert_user(conn, username, hashed, name, school, class_label=""):
     """Проверка «логин свободен» и запись — одним куском под замком. False, если логин занят."""
     if conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
         return False
     try:
         conn.execute(
-            "INSERT INTO users (username, password, name, school) VALUES (?, ?, ?, ?)",
-            (username, hashed, name, school),
+            "INSERT INTO users (username, password, name, school, class_label) VALUES (?, ?, ?, ?, ?)",
+            (username, hashed, name, school, class_label),
         )
         conn.commit()
     except conn.IntegrityError:  # логин заняли в ту же секунду (например, из другого процесса)
@@ -212,6 +242,27 @@ def get_user(conn, user_id):
     return dict(zip(["id", "username", "name", "school", "points"], row))
 
 
+ROLES = ("student", "teacher", "admin")
+
+
+@_locked
+def user_access(conn, user_id):
+    """Роль, код школы и класс пользователя: {"role", "school_id", "class_label"} (None — нет такого)."""
+    row = conn.execute("SELECT role, school_id, class_label FROM users WHERE id = ?", (user_id,)).fetchone()
+    return dict(zip(["role", "school_id", "class_label"], row)) if row else None
+
+
+@_locked
+def set_role(conn, username, role, school_id=None):
+    """Назначить роль (и школу учителя). True — если такой логин есть. Вызывается из core/roles.py."""
+    if role not in ROLES:
+        raise ValueError(f"Роль должна быть одной из: {', '.join(ROLES)}")
+    cur = conn.execute("UPDATE users SET role = ?, school_id = COALESCE(?, school_id) WHERE username = ?",
+                       (role, school_id, username.strip()))
+    conn.commit()
+    return cur.rowcount > 0
+
+
 @_locked
 def add_points(conn, user_id, points):
     if user_id:
@@ -222,10 +273,12 @@ def add_points(conn, user_id, points):
 # ---------- Распознавания и викторины ----------
 
 @_locked
-def save_scan(conn, user_id, predicted, confidence, image_hash=None):
+def save_scan(conn, user_id, predicted, confidence, image_hash=None, school_id=None, bin=None, class_label=None):
+    """school_id и bin — из QR-кода на баке (core/qr.py); class_label — класс ученика для отчёта учителя."""
     scan_id = conn.execute(  # RETURNING id работает и в SQLite (3.35+), и в Postgres — lastrowid только в SQLite
-        "INSERT INTO scans (user_id, predicted, confidence, image_hash) VALUES (?, ?, ?, ?) RETURNING id",
-        (user_id, predicted, confidence, image_hash),
+        "INSERT INTO scans (user_id, predicted, confidence, image_hash, school_id, bin, class_label)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        (user_id, predicted, confidence, image_hash, school_id, bin, class_label),
     ).fetchone()[0]
     conn.commit()
     return scan_id
@@ -329,6 +382,69 @@ def leaderboard_schools(conn, limit=20):
            FROM users WHERE school != '' GROUP BY school ORDER BY pts DESC LIMIT ?""",
         (limit,),
     ).fetchall()
+
+
+# ---------- Отчёт учителя (QR-режим) ----------
+
+@_locked
+def school_scans(conn, school_id, since):
+    """Фото у баков школы начиная с since (datetime UTC): [(дата, класс, модель, исправление, бак)].
+
+    Дата сравнивается строкой «ГГГГ-ММ-ДД ЧЧ:ММ:СС» — так одинаково работает и в SQLite, и в Postgres.
+    """
+    return conn.execute(
+        "SELECT date, class_label, predicted, corrected, bin FROM scans"
+        " WHERE school_id = ? AND date >= ? ORDER BY date",
+        (school_id, since.strftime("%Y-%m-%d %H:%M:%S")),
+    ).fetchall()
+
+
+@_locked
+def school_ids(conn):
+    """Коды школ, у баков которых уже фотографировали, — для выбора у администратора."""
+    return [row[0] for row in conn.execute(
+        "SELECT DISTINCT school_id FROM scans WHERE school_id IS NOT NULL ORDER BY school_id")]
+
+
+# ---------- Эко-карта ----------
+
+POINT_KINDS = ("batteries", "ewaste", "mercury", "recycle")
+
+
+@_locked
+def eco_points(conn):
+    rows = conn.execute("SELECT id, name, kind, address, hours, lat, lon FROM eco_points ORDER BY kind, name").fetchall()
+    return [dict(zip(["id", "name", "kind", "address", "hours", "lat", "lon"], row)) for row in rows]
+
+
+def add_eco_point(conn, name, kind, address, hours, lat, lon, added_by=None):
+    """Добавить пункт приёма. Возвращает (ok, сообщение)."""
+    name, address, hours = (str(v or "").strip()[:120] for v in (name, address, hours))
+    if not name:
+        return False, "Укажите название пункта."
+    if kind not in POINT_KINDS:
+        return False, "Неизвестный тип пункта."
+    try:
+        lat, lon = float(lat), float(lon)
+    except (TypeError, ValueError):
+        return False, "Координаты должны быть числами."
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180) or (lat == 0 and lon == 0):
+        return False, "Проверьте координаты: широта от -90 до 90, долгота от -180 до 180."
+    _insert_point(conn, name, kind, address, hours, lat, lon, added_by)
+    return True, "Пункт добавлен на карту."
+
+
+@_locked
+def _insert_point(conn, name, kind, address, hours, lat, lon, added_by):
+    conn.execute("INSERT INTO eco_points (name, kind, address, hours, lat, lon, added_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                 (name, kind, address, hours, lat, lon, added_by))
+    conn.commit()
+
+
+@_locked
+def delete_eco_point(conn, point_id):
+    conn.execute("DELETE FROM eco_points WHERE id = ?", (point_id,))
+    conn.commit()
 
 
 @_locked

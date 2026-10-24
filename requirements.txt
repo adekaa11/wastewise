@@ -21,3 +21,4 @@ python-dotenv
 pandas
 altair
 pillow
+segno  # QR-коды для школьных баков (core/qr.py) — чистый Python, без зависимостей

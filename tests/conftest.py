@@ -34,7 +34,7 @@ needs_postgres = pytest.mark.skipif(not TEST_DATABASE_URL, reason="нужен TE
 def fresh_postgres():
     """Соединение с пустой тестовой базой Postgres: все таблицы WasteWise удалены, миграции применятся заново."""
     conn = db.get_conn(TEST_DATABASE_URL)
-    conn.execute("DROP TABLE IF EXISTS quiz_results, scans, users, schema_migrations CASCADE")
+    conn.execute("DROP TABLE IF EXISTS eco_points, quiz_results, scans, users, schema_migrations CASCADE")
     return conn
 
 
@@ -136,8 +136,10 @@ class _Upload:
 class App:
     """Обёртка над AppTest: страница, загрузка фото, вход, баллы из базы."""
 
-    def __init__(self, path, db_path, classifier, detector, uploads, database_url=None, secrets=None):
+    def __init__(self, path, db_path, classifier, detector, uploads, database_url=None, secrets=None, query=None):
         self.at = AppTest.from_file(str(path), default_timeout=60)
+        for key, value in (query or {}).items():  # параметры ссылки: QR-код бака, ?lang=kk
+            self.at.query_params[key] = value
         if database_url:  # как на Streamlit Cloud: строка подключения — в Secrets
             self.at.secrets["DATABASE_URL"] = database_url
         for key, value in (secrets or {}).items():
@@ -199,8 +201,21 @@ class App:
     def captions(self):
         return [c.value for c in self.at.caption]
 
+    def html(self):
+        """Весь текст страницы из st.markdown — для проверок «что видно на экране»."""
+        return " ".join(m.value for m in self.at.markdown)
 
-def start_app(tmp_path, monkeypatch, database_url=None, secrets=None):
+    def set_role(self, username, role, school_id=None):
+        """Назначить роль, как core/roles.py, — в базе приложения."""
+        conn = db.get_conn(self.database_url) if self.database_url else sqlite3.connect(self.db_path)
+        try:
+            assert db.set_role(conn, username, role, school_id)
+        finally:
+            conn.close()
+        return self.run()
+
+
+def start_app(tmp_path, monkeypatch, database_url=None, secrets=None, query=None):
     """Запустить приложение в отдельной папке: своя data/feedback, модели — поддельные."""
     for key in ("DATABASE_URL", "SUPABASE_URL", "SUPABASE_SERVICE_KEY"):
         monkeypatch.delenv(key, raising=False)  # чтобы тесты не попали в настоящую базу и хранилище
@@ -218,7 +233,7 @@ def start_app(tmp_path, monkeypatch, database_url=None, secrets=None):
     monkeypatch.setattr(st, "file_uploader", lambda *a, **k: uploads["file"])
     st.cache_data.clear()
     st.cache_resource.clear()
-    return App(tmp_path / "app.py", db.DB_PATH, classifier, detector, uploads, database_url, secrets)
+    return App(tmp_path / "app.py", db.DB_PATH, classifier, detector, uploads, database_url, secrets, query)
 
 
 @pytest.fixture(params=BACKENDS)
