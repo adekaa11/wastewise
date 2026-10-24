@@ -429,6 +429,9 @@ section[data-testid="stSidebar"] .ww-foot a {{ color:#8FD5AE; border-color:#2C54
 .ww-stat b {{ display:block; font-family:'Rubik', sans-serif; font-weight:700; color:var(--green);
     font-size:clamp(1.4rem, 3vw, 2rem); line-height:1.1; }}
 .ww-stat span {{ color:var(--muted); font-size:.88rem; }}
+.ww-stat small {{ display:block; margin-top:8px; font-size:.78rem; color:var(--muted); }}
+.ww-stat small a {{ color:var(--muted); text-decoration:underline; }}
+@media (max-width: 640px) {{ .ww-stats.facts {{ grid-template-columns:1fr; }} }}
 .ww-history {{ display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }}
 .ww-hist {{ display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:center;
     background:var(--surface); border:2px solid var(--edge); border-left:8px solid var(--c); border-radius:12px;
@@ -677,6 +680,14 @@ def stats(items):
     """Три числа в ряд — и на телефоне тоже в ряд. items — (значение, подпись)."""
     _html('<div class="ww-stats">' + "".join(
         f'<div class="ww-stat"><b>{esc(value)}</b><span>{esc(label)}</span></div>' for value, label in items) + "</div>")
+
+
+def facts(items, source_word="Источник"):
+    """Цифры со ссылкой на источник. items — (число, подпись, источник, ссылка). Текст переносится, не обрезается."""
+    _html('<div class="ww-stats facts">' + "".join(
+        f'<div class="ww-stat"><b>{esc(value)}</b><span>{esc(label)}</span>'
+        f'<small>{esc(source_word)}: <a href="{esc(url)}" target="_blank" rel="noopener">{esc(source)}</a></small></div>'
+        for value, label, source, url in items) + "</div>")
 
 
 def history(items):

@@ -15,7 +15,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from core import db
-from core.content import (GUEST_SCAN_NUDGE, LOW_CONFIDENCE, MODEL_ACCURACY, POINTS_PER_CORRECT_ANSWER,
+from core.content import (GUEST_SCAN_NUDGE, KZ_FACTS, LOW_CONFIDENCE, MODEL_ACCURACY, POINTS_PER_CORRECT_ANSWER,
                           POINTS_PER_FEEDBACK, POINTS_PER_SCAN, QUIZ_REWARDS_PER_DAY, WASTE_INFO, HAZARD_MAYBE,
                           HAZARD_SURE, canonical, hazard_hint, level_for)
 from core.model import DETECTOR_PATH, check_scene, classify, load_image, load_model
@@ -353,6 +353,8 @@ if page == "Главная":
             col.caption(note)
 
     st.markdown("## " + _("Почему это важно"))
+    # Официальные цифры по Казахстану — каждая со ссылкой на источник (core/content.py → KZ_FACTS)
+    ui.facts([(value, _(label), _(source), url) for value, label, source, url in KZ_FACTS], _("Источник"))
     ui.quote(_(
         "По данным Всемирного банка, объём твёрдых бытовых отходов в мире к 2050 году может вырасти "
         "на 70% по сравнению с 2016 годом. Главный барьер переработки — неправильная сортировка: "

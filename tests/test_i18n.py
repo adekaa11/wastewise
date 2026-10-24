@@ -7,7 +7,7 @@ import pytest
 
 from core import i18n
 from core.assistant import AssistantError
-from core.content import LEVELS, QUIZ_BANK, WASTE_INFO, HAZARD_MAYBE, HAZARD_SURE
+from core.content import KZ_FACTS, LEVELS, QUIZ_BANK, WASTE_INFO, HAZARD_MAYBE, HAZARD_SURE
 from core.content_kk import QUIZ_KK, WASTE_KK
 from core.i18n_kk import KK
 from core.model import NOT_WASTE
@@ -41,6 +41,7 @@ def test_dynamic_texts_are_translated():
                "Такой логин уже занят.", "Аккаунт создан. Теперь войдите.",
                "Дата", "Класс", "Бак", "Итоговый тип", "Ответ модели", "Исправлено", "Верно у бака", "да", "нет"]
     dynamic += [title for _, title, _ in LEVELS] + list(NOT_WASTE.values())
+    dynamic += [f[1] for f in KZ_FACTS] + [f[2] for f in KZ_FACTS] + ["Источник"]
     assert not [t for t in dynamic if t not in KK]
 
 

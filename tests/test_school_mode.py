@@ -181,3 +181,10 @@ def test_for_schools_page_explains_connection_and_data(tmp_path, monkeypatch):
     html = app.html()
     assert "Наклейте QR-коды" in html and "не сохраняется" in html and "OpenAI" in html
     assert any(b.label == "Написать в Telegram" for b in app.at.get("link_button"))
+
+
+def test_home_shows_official_kazakhstan_figures_with_sources(tmp_path, monkeypatch):
+    app = start_app(tmp_path, monkeypatch)
+    html = app.html()
+    assert all(v in html for v in ("4,5+ млн т", "25,8%", "95%"))
+    assert "primeminister.kz" in html and "inform.kz" in html
