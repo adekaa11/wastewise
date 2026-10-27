@@ -245,10 +245,13 @@ def plural(n, one, few, many):
     return few if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else many
 
 
-AUTHOR = "Адильжан Кадыргажы"
-TELEGRAM = "https://t.me/crybaby_c"
-INSTAGRAM = "https://www.instagram.com/_kadyrgazhy_a"
-GITHUB = "https://github.com/adekaa11/wastewise"  # исходный код проекта
+# Автор и контакты на сайте. Пустая ссылка ("") — кнопка не показывается; без TELEGRAM сайт пишет
+# «свяжитесь с автором» без ссылки.
+AUTHOR = "Айзере"
+CITY = ""        # город рядом с именем автора; "" — не показывать
+TELEGRAM = ""
+INSTAGRAM = ""
+GITHUB = ""      # исходный код проекта
 
 _TG_ICON = ('<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">'
             '<path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12'
@@ -269,12 +272,28 @@ _GH_ICON = ('<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"
 
 
 def social_links(align="flex-start"):
-    """Иконки Telegram и Instagram как HTML-ссылки."""
+    """Иконки Telegram, Instagram и GitHub как HTML-ссылки — только те, что заданы. Нет ни одной — пустая строка."""
+    links = [(url, icon, name) for url, icon, name in
+             [(TELEGRAM, _TG_ICON, "Telegram"), (INSTAGRAM, _IG_ICON, "Instagram"), (GITHUB, _GH_ICON, "GitHub")]
+             if url]
+    if not links:
+        return ""
     return (f'<div class="ww-foot" style="justify-content:{align}">'
-            f'<a href="{TELEGRAM}" target="_blank">{_TG_ICON}Telegram</a>'
-            f'<a href="{INSTAGRAM}" target="_blank">{_IG_ICON}Instagram</a>'
-            f'<a href="{GITHUB}" target="_blank">{_GH_ICON}GitHub</a>'
-            f'</div>')
+            + "".join(f'<a href="{url}" target="_blank">{icon}{name}</a>' for url, icon, name in links)
+            + '</div>')
+
+
+def show_social_links(align="flex-start"):
+    markup = social_links(align)
+    if markup:
+        st.markdown(markup, unsafe_allow_html=True)
+
+
+def author_line():
+    """«Автор проекта: Имя, г. Город.» — город, только если задан."""
+    if CITY:
+        return _("Автор проекта: {author}, г. {city}.").format(author=_(AUTHOR), city=_(CITY))
+    return _("Автор проекта: {author}.").format(author=_(AUTHOR))
 
 
 # ---------- Состояние сессии ----------
@@ -326,7 +345,7 @@ with st.sidebar:
         st.rerun()
     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
     st.caption(_(AUTHOR))
-    st.markdown(social_links(), unsafe_allow_html=True)
+    show_social_links()
 
 
 ui.theme(dark)
@@ -401,9 +420,9 @@ if page == "Главная":
     ))
 
     st.divider()
-    st.markdown("**" + _("Автор проекта: {author}, г. Астана.").format(author=_(AUTHOR)) + "**")
+    st.markdown("**" + author_line() + "**")
     st.caption(_("Школам: как подключить сервис и как мы обращаемся с данными — в разделе «Для школ»."))
-    st.markdown(social_links(), unsafe_allow_html=True)
+    show_social_links()
 
 # =====================================================================
 # РАСПОЗНАВАНИЕ
@@ -871,8 +890,11 @@ elif page == "Для школ":
                           "Если модель не уверена, сайт честно об этом говорит и предлагает второй вариант.").format(
                      n=f"{MODEL_ACCURACY['photos']:,}".replace(",", " "))))
         st.markdown("### " + _("Связаться"))
-        st.write(_("Автор проекта — {author}, Астана. Напишите, и мы подключим вашу школу.").format(author=_(AUTHOR)))
-        st.link_button(_("Написать в Telegram"), TELEGRAM, type="primary")
+        if TELEGRAM:
+            st.write(author_line() + " " + _("Напишите, и мы подключим вашу школу."))
+            st.link_button(_("Написать в Telegram"), TELEGRAM, type="primary")
+        else:
+            st.write(_("Чтобы подключить школу, свяжитесь с автором проекта — {author}.").format(author=_(AUTHOR)))
 
     with tab_data:
         # Каждое утверждение здесь — про то, как работает код (core/db.py, core/storage.py, core/model.py,
@@ -898,7 +920,8 @@ elif page == "Для школ":
             "Текст вопроса отправляется в OpenAI, чтобы получить ответ, и в базе сайта не сохраняется. "
             "Не пишите в вопросе личные данные.")))
         ui.block(_("🗑️ Удалить данные"), ui.esc(_(
-            "Напишите автору проекта в Telegram — аккаунт и связанные с ним данные удалим.")), "fact")
+            "Напишите автору проекта в Telegram — аккаунт и связанные с ним данные удалим.") if TELEGRAM else _(
+            "Напишите автору проекта — аккаунт и связанные с ним данные удалим.")), "fact")
 
 # =====================================================================
 # ПРОФИЛЬ
