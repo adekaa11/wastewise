@@ -180,7 +180,7 @@ def test_for_schools_page_explains_connection_and_data(tmp_path, monkeypatch):
     app.go("Для школ")
     html = app.html()
     assert "Наклейте QR-коды" in html and "не сохраняется" in html and "OpenAI" in html
-    assert "Чтобы подключить школу, свяжитесь с автором проекта" in " ".join(m.value for m in app.at.markdown)
+    assert any(b.label == "Написать в Telegram" for b in app.at.get("link_button"))
 
 
 def test_home_shows_official_kazakhstan_figures_with_sources(tmp_path, monkeypatch):
@@ -188,17 +188,3 @@ def test_home_shows_official_kazakhstan_figures_with_sources(tmp_path, monkeypat
     html = app.html()
     assert all(v in html for v in ("4,5+ млн т", "25,8%", "95%"))
     assert "primeminister.kz" in html and "inform.kz" in html
-
-
-def test_no_author_traces_when_contacts_are_empty(tmp_path, monkeypatch):
-    """Временный режим: автор — Айзере, никаких ссылок на соцсети и GitHub, нигде прежнего имени."""
-    app = start_app(tmp_path, monkeypatch)
-    for page in ["Главная", "Для школ"]:
-        app.go(page)
-        text = " ".join([m.value for m in app.at.markdown] + app.captions()
-                        + [m.value for m in app.at.sidebar.markdown] + [c.value for c in app.at.sidebar.caption])
-        assert "Айзере" in text
-        for trace in ("Адильжан", "Кадыргаж", "crybaby", "kadyrgazhy", "adekaa11", "t.me/", "instagram.com",
-                      "github.com"):
-            assert trace not in text, (page, trace)
-    assert not app.at.get("link_button")
