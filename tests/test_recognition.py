@@ -65,30 +65,32 @@ def test_face_filter_skipped_when_opencv_has_no_cascade(monkeypatch):
     assert model._has_face(Image.new("L", (100, 100), 200)) is False
 
 
-def _scene(boxes, size=(320, 240)):
+
+def _scene(monkeypatch, boxes, size=(320, 240)):
     """check_scene с фальшивым детектором: boxes — [(класс COCO, рамка, уверенность), ...]."""
     from conftest import FakeDetector
+    monkeypatch.setattr(model, "_has_face", lambda gray: False)  # в CI нет OpenCV
     detector = FakeDetector()
     detector.boxes = boxes
     return model.check_scene(detector, Image.new("RGB", size, "skyblue"))
 
 
-def test_unsure_person_does_not_block_a_bottle():
+def test_unsure_person_does_not_block_a_bottle(monkeypatch):
     """Смятая прозрачная бутылка на весь кадр: детектор видел «человека» на ~0.5 — фото отбрасывалось."""
-    assert _scene([(0, (0, 0, 300, 240), 0.5)]) is None
+    assert _scene(monkeypatch, [(0, (0, 0, 300, 240), 0.5)]) is None
 
 
-def test_confident_person_still_blocks():
-    assert "человек" in _scene([(0, (0, 0, 300, 240), 0.9)])
+def test_confident_person_still_blocks(monkeypatch):
+    assert "человек" in _scene(monkeypatch, [(0, (0, 0, 300, 240), 0.9)])
 
 
-def test_small_person_does_not_block():
-    assert _scene([(0, (0, 0, 60, 60), 0.95)]) is None  # рука или человечек на фоне
+def test_small_person_does_not_block(monkeypatch):
+    assert _scene(monkeypatch, [(0, (0, 0, 60, 60), 0.95)]) is None  # рука или человечек на фоне
 
 
-def test_weakly_seen_bottle_lets_photo_through():
-    assert _scene([(0, (0, 0, 300, 240), 0.9), (39, (100, 50, 200, 200), 0.3)]) is None
+def test_weakly_seen_bottle_lets_photo_through(monkeypatch):
+    assert _scene(monkeypatch, [(0, (0, 0, 300, 240), 0.9), (39, (100, 50, 200, 200), 0.3)]) is None
 
 
-def test_animal_still_blocks():
-    assert "кошка" in _scene([(15, (0, 0, 200, 200), 0.8)])
+def test_animal_still_blocks(monkeypatch):
+    assert "кошка" in _scene(monkeypatch, [(15, (0, 0, 200, 200), 0.8)])
