@@ -110,11 +110,15 @@ class FakeDetector:
 
     def __init__(self):
         self.calls = 0
-        self.boxes = []  # что «увидит» детектор: [(класс COCO, (x1, y1, x2, y2)), ...]
+        # что «увидит» детектор: [(класс COCO, (x1, y1, x2, y2)), ...] или с уверенностью третьим элементом
+        # [(класс, рамка, 0.4), ...]; без неё — 0.9 (детектор уверен)
+        self.boxes = []
 
     def predict(self, image, **kwargs):
         self.calls += 1
-        boxes = SimpleNamespace(cls=_List(c for c, _ in self.boxes), xyxy=_List(b for _, b in self.boxes))
+        items = [(b[0], b[1], b[2] if len(b) > 2 else 0.9) for b in self.boxes]
+        boxes = SimpleNamespace(cls=_List(c for c, _, _ in items), xyxy=_List(b for _, b, _ in items),
+                                conf=_List(p for _, _, p in items))
         return [SimpleNamespace(boxes=boxes)]
 
 

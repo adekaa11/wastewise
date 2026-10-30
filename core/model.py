@@ -25,6 +25,17 @@ WASTE_LIKE = (
 
 DARK_THRESHOLD = 35  # средняя яркость 0..255; ниже — снимок слишком тёмный
 
+# Пороги уверенности детектора-«охранника». Раньше был один общий порог 0.5 для всего — и смятая прозрачная
+# бутылка на весь кадр отбрасывалась как «человек» (детектор видел «человека» на ~0.5, а бутылку не замечал).
+# Теперь: похожие на отходы предметы засчитываем уже с 0.25 (лучше пропустить лишнее фото, чем отбросить
+# настоящий отход), а «человек» блокирует фото только при высокой уверенности. Селфи всё равно ловит _has_face.
+DETECT_CONF = 0.25        # ниже этого детектор ничего не сообщает
+WASTE_LIKE_CONF = 0.25    # бутылка/стакан/телефон… в кадре — фото пропускаем
+PERSON_CONF = 0.65        # человек блокирует только при такой уверенности…
+PERSON_SHARE = 0.40       # …и если занимает почти весь кадр (рука с предметом — это нормально)
+ANIMAL_CONF = 0.50
+ANIMAL_SHARE = 0.10
+
 # Модели загружаются один раз и общие для всех посетителей сайта (st.cache_resource),
 # а Streamlit обслуживает каждого посетителя в своём потоке. Ultralytics предупреждает:
 # один объект YOLO нельзя вызывать из нескольких потоков одновременно — ответы могут
@@ -134,17 +145,21 @@ def check_scene(detector, image: Image.Image):
         return "Похоже, в кадре лицо человека, а не отход. Сфотографируйте сам предмет крупным планом."
 
     with _PREDICT_LOCK:
-        result = detector.predict(image, conf=0.5, verbose=False)[0]
+        result = detector.predict(image, conf=DETECT_CONF, verbose=False)[0]
     area = image.width * image.height
     found_waste_like = False
     blocker = None
-    for cls_id, (x1, y1, x2, y2) in zip(result.boxes.cls.tolist(), result.boxes.xyxy.tolist()):
+    for cls_id, conf, (x1, y1, x2, y2) in zip(result.boxes.cls.tolist(), result.boxes.conf.tolist(),
+                                              result.boxes.xyxy.tolist()):
         cls_id = int(cls_id)
         share = (x2 - x1) * (y2 - y1) / area
         if cls_id in WASTE_LIKE:
-            found_waste_like = True
-        # человек — только если занимает почти весь кадр: рука с предметом в руке — это нормально
-        elif (cls_id == 0 and share > 0.40) or (cls_id in NOT_WASTE and cls_id != 0 and share > 0.10):
+            if conf >= WASTE_LIKE_CONF:
+                found_waste_like = True
+        elif cls_id == 0:
+            if conf >= PERSON_CONF and share > PERSON_SHARE:
+                blocker = NOT_WASTE[0]
+        elif cls_id in NOT_WASTE and conf >= ANIMAL_CONF and share > ANIMAL_SHARE:
             blocker = NOT_WASTE[cls_id]
     if blocker and not found_waste_like:
         return f"Похоже, в кадре {blocker}, а не отход. Сфотографируйте сам предмет крупным планом."
