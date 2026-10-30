@@ -197,8 +197,8 @@ def test_no_author_traces_when_contacts_are_empty(tmp_path, monkeypatch):
         app.go(page)
         text = " ".join([m.value for m in app.at.markdown] + app.captions()
                         + [m.value for m in app.at.sidebar.markdown] + [c.value for c in app.at.sidebar.caption])
-        assert "Кадыргажы Айзере" in text
-        for trace in ("Адильжан", "crybaby", "kadyrgazhy", "adekaa11", "t.me/", "instagram.com",
+        assert "Айзере" in text
+        for trace in ("Адильжан", "Кадыргаж", "crybaby", "kadyrgazhy", "adekaa11", "t.me/", "instagram.com",
                       "github.com"):
             assert trace not in text, (page, trace)
     assert not app.at.get("link_button")
