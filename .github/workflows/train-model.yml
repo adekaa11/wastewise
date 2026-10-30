@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     env:
-      HOURS: ${{ inputs.hours || '3.5' }}
+      HOURS: ${{ inputs.hours || '4.5' }}
       IMGSZ: ${{ inputs.imgsz || '224' }}
     steps:
       - uses: actions/checkout@v5
