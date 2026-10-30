@@ -252,9 +252,6 @@ CITY = ""        # город рядом с именем автора; "" — н
 TELEGRAM = ""
 INSTAGRAM = ""
 GITHUB = ""      # исходный код проекта
-# Скрыть кнопки Streamlit Cloud «Fork» и GitHub (ведут на репозиторий) и аватар создателя внизу справа
-# (ведёт на профиль Streamlit владельца). Это интерфейс Streamlit Cloud, не сайта: скрываем CSS и скриптом.
-HIDE_CLOUD_LINKS = True
 
 _TG_ICON = ('<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">'
             '<path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12'
@@ -352,30 +349,6 @@ with st.sidebar:
 
 
 ui.theme(dark)
-
-
-def hide_cloud_links():
-    """Убрать ссылки Streamlit Cloud на репозиторий и профиль владельца (см. HIDE_CLOUD_LINKS)."""
-    # «Fork» и значок GitHub — в шапке самого приложения: хватает CSS
-    st.markdown('<style>[data-testid="stToolbarActions"] { display:none !important; }'
-                '.st-key-ww_hide_cloud { display:none !important; }</style>', unsafe_allow_html=True)
-    # Аватар создателя — во внешней обёртке Streamlit Cloud (тот же домен, на уровень выше). До неё достаёт
-    # только скрипт из компонента; MutationObserver — потому что обёртка дорисовывает аватар позже.
-    import streamlit.components.v1 as components
-    with st.container(key="ww_hide_cloud"):
-        components.html("""<script>
-        try {
-          const doc = window.parent.parent.document;
-          const hide = () => doc.querySelectorAll('a[href*="share.streamlit.io/user/"], [data-testid="appCreatorAvatar"]')
-            .forEach(el => { (el.closest('a') || el).style.display = 'none'; });
-          hide();
-          new MutationObserver(hide).observe(doc.body, {childList: true, subtree: true});
-        } catch (e) {}
-        </script>""", height=0)
-
-
-if HIDE_CLOUD_LINKS:
-    hide_cloud_links()
 
 if st.session_state.pop("welcome", False) and user:
     st.toast(_("Добро пожаловать, {name}! Аккаунт создан, вы вошли.").format(name=user["name"]), icon="🎉")
